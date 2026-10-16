@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>校准与语义熵：两个幻觉度量的构造逻辑</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Segoe UI", "Microsoft YaHei", -apple-system, sans-serif;
+    background: #fafafa; color: #2c3e50; line-height: 1.6; padding: 20px 28px;
+  }
+  h1 { font-size: 22px; margin-bottom: 6px; }
+  h2 { font-size: 15px; margin-bottom: 6px; color: #34495e; }
+  .intro {
+    background: #eef3f8; border-left: 4px solid #4a7db5;
+    padding: 10px 14px; font-size: 13px; margin-bottom: 14px; border-radius: 0 4px 4px 0;
+  }
+  .intro a { color: #2c66a8; }
+  .panel {
+    background: #fff; border: 1px solid #dde3ea; border-radius: 6px;
+    padding: 12px 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); margin-bottom: 16px;
+  }
+  .sub { display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start; }
+  button {
+    background: #4a7db5; color: #fff; border: none; border-radius: 4px;
+    padding: 6px 12px; font-size: 13px; cursor: pointer; margin-right: 6px;
+  }
+  button:hover { background: #3c6a9e; }
+  button.secondary { background: #6b7f94; }
+  button.active { background: #4a7db5; font-weight: bold; }
+  button:disabled { background: #a5b8cc; cursor: not-allowed; }
+  canvas { display: block; }
+  #relChart { width: 100%; max-width: 460px; height: 300px; }
+  table { border-collapse: collapse; font-size: 12.5px; }
+  td, th { border: 1px solid #dde3ea; padding: 4px 8px; text-align: left; }
+  th { background: #f0f4f8; }
+  .metric { font-size: 20px; font-weight: bold; color: #1a5276; }
+  .muted { font-size: 12px; color: #7f8c8d; }
+  .sample { font-size: 13px; padding: 3px 8px; border-radius: 4px; margin: 2px 0; }
+  .sample .sidx { color: #95a5a6; display: inline-block; width: 26px; }
+  .hl { background: #fdf2e9; outline: 1px solid #f5cba7; }
+  .cluster-tag { display: inline-block; font-size: 11px; padding: 0 6px; border-radius: 8px; margin-left: 6px; }
+  .t0 { background: #e8f6ef; color: #1e8449; }
+  .t1 { background: #fdf0ef; color: #c0392b; }
+  .note {
+    font-size: 12.5px; color: #5d6d7e; background: #fdf6ec; border-left: 3px solid #d4a017;
+    padding: 8px 12px; margin-top: 12px; border-radius: 0 4px 4px 0;
+  }
+  .note b { color: #8a6d1a; }
+  footer { margin-top: 16px; font-size: 12px; color: #95a5a6; border-top: 1px solid #e3e8ee; padding-top: 8px; }
+  .bigstat { font-size: 13px; margin-top: 6px; }
+  .bigstat b { font-size: 18px; color: #1a5276; }
+  .compare { display: flex; gap: 14px; margin: 8px 0; flex-wrap: wrap; }
+  .cmpbox { border: 1px solid #e3e8ee; border-radius: 6px; padding: 8px 14px; min-width: 170px; }
+  .cmpbox .num { font-size: 24px; font-weight: bold; }
+  .cmpbox .lbl { font-size: 11.5px; color: #7f8c8d; }
+  #strEnt .num { color: #b9770e; } #semEnt .num { color: #1a7fa8; }
+</style>
+</head>
+<body>
+
+<h1>校准与语义熵：LLM 幻觉的两个度量是怎么构造的</h1>
+
+<div class="intro">
+  本页包含两个独立面板，演示 <a href="../volumes/04-ai-machine-learning/problems/45-llm-hallucination.md">../volumes/04-ai-machine-learning/problems/45-llm-hallucination.md</a>（#45 LLM 幻觉）中两类核心度量的<b>构造逻辑与失效模式</b>。
+  <br><b>面板一（ECE）</b>：可靠性图（reliability diagram）与期望校准误差（Expected Calibration Error）——衡量"模型说的置信度"与"实际对的比例"是否一致。
+  <br><b>面板二（语义熵）</b>：对同一问题的多次采样输出做聚类再算熵——衡量"模型到底给出了几种互相矛盾的说法"。
+  <br><b>它能说明什么</b>：两个度量各自的定义、计算过程，以及精心构造的失效案例（过度自信的 ECE 曲线；"措辞多样但语义一致"导致字符串熵虚高、语义熵很低）。
+  <br><b>它不能说明什么</b>：<b>所有数据都是合成的</b>，用于演示度量的构造逻辑，不构成对任何真实模型幻觉率的测量；语义熵的"语义聚类"在真实场景里没有金标准（靠蕴含模型或人工标注），本页用手工标注模拟这一步。
+</div>
+
+<!-- ==================== 面板一：ECE ==================== -->
+<div class="panel">
+  <h2>面板一：可靠性图与 ECE（期望校准误差）</h2>
+  <div class="sub">
+    <div>
+      <div style="margin:6px 0">
+        数据集：
+        <button class="dsBtn active" data-ds="perfect">完美校准</button>
+        <button class="dsBtn" data-ds="over">过度自信</button>
+        <button class="dsBtn" data-ds="under">欠自信</button>
+        <button id="regenBtn" class="secondary">重新抽样</button>
+      </div>
+      <div class="bigstat">ECE = <b id="eceShow">—</b><span class="muted">　（10 等宽分箱，Σ (n_b/N)·|acc_b − conf_b|）</span></div>
+      <div class="muted" style="margin-top:6px">共 300 个样本：(置信度 c, 是否答对)。实际准确率按 a(c) 生成：<br>
+        完美校准 a(c)=c；过度自信 a(c)=c^2（说 90% 其实只有 ~81%）；欠自信 a(c)=√c（说 25% 其实对了一半）。</div>
+      <canvas id="relChart"></canvas>
+      <div class="muted">柱高 = 该箱<b>实际准确率</b>；虚线 = 完美校准 y=x；蓝线 = 该箱<b>平均置信度</b>。柱低于虚线 = 过度自信，高于 = 欠自信。</div>
+    </div>
+    <div>
+      <h3 style="font-size:13px">分箱明细</h3>
+      <table id="binTable"></table>
+    </div>
+  </div>
+  <div class="note" style="margin-top:8px">
+    <b>失效模式提示</b>：ECE 对分箱方式敏感、且不反映错误的方向性（把"过度自信"与"欠自信"的箱合并后可互相抵消）；
+    一个模型的 ECE 很低也不代表其幻觉少——校准只关心"置信度与对错的相关"，不关心绝对准确率。可以点几次"重新抽样"观察 ECE 的抽样方差。
+  </div>
+</div>
+
+<!-- ==================== 面板二：语义熵 ==================== -->
+<div class="panel">
+  <h2>面板二：字符串熵 vs 语义熵</h2>
+  <p style="font-size:13px">同一问题对模型采样 10 次。对输出做聚类后，熵 H = −Σ pᵢ·log₂ pᵢ（pᵢ = 第 i 簇占比）。
+  <b>字符串熵</b>按"输出完全一致"聚类；<b>语义熵</b>按"语义归一化"聚类（真实系统中这一步由蕴含模型/标注完成，此处手工给定）。</p>
+  <div class="sub" style="margin-top:8px">
+    <div style="flex:1 1 420px;min-width:360px">
+      <div style="margin:4px 0">
+        示例场景：
+        <button class="scBtn active" data-sc="wordy">精心构造：措辞多样</button>
+        <button class="scBtn" data-sc="consistent">对照：回答一致</button>
+      </div>
+      <div id="samples"></div>
+    </div>
+    <div style="flex:1 1 300px;min-width:280px">
+      <div class="compare">
+        <div class="cmpbox" id="strEnt"><div class="lbl">字符串熵（bit）</div><div class="num">—</div></div>
+        <div class="cmpbox" id="semEnt"><div class="lbl">语义熵（bit）</div><div class="num">—</div></div>
+      </div>
+      <div id="clusterInfo"></div>
+      <div class="note" style="margin-top:8px" id="failNote">
+        <b>本例构造的失效模式</b>：5 个<b>语义完全相同</b>（都对）但<b>措辞各异</b>的回答，加上 5 个互相不同的错误回答。
+        字符串熵 = log₂10 ≈ 3.32 bit（10 个字符串全不同，看似"模型很犹豫"），
+        语义熵 = 1 bit（其实只有"对/错"两个簇，且模型内部相当一致——5:5）。
+        只看字符串熵会严重高估幻觉风险；这正是语义熵（Kuhn–Gal–Farquhar, ICLR 2023）提出的动机。
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="note">
+  <b>方法边界</b>：ECE 与语义熵都是<b>度量</b>而非解法——它们能"检测"幻觉风险，不生成正确答案；
+  语义熵依赖聚类质量，聚类错误（如把"约 30 万 km/s"与"299,792 km/s"分成两簇）会让它退化回字符串熵；
+  ECE 依赖大量有标签样本与合理的分箱数。二者结合使用（先语义熵粗筛、再人工核验）才是档案推荐的做法。
+</div>
+
+<footer>本演示复现的是已知结果，不构成对开放问题的任何新贡献。</footer>
+
+<script>
+"use strict";
+/* =====================================================================
+ * calibration.html —— 两个合成数据演示：ECE 可靠性图、字符串熵 vs 语义熵。
+ * 全部数据在页面内合成，明确标注"不构成对真实模型的测量"。
+ * ===================================================================== */
+
+/* ---------------- 高分屏适配 ---------------- */
+function setupCanvas(canvas) {
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width  = Math.round(rect.width  * dpr);
+  canvas.height = Math.round(rect.height * dpr);
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { ctx, w: rect.width, h: rect.height };
+}
+
+/* ============================================================
+ * 面板一：ECE 与可靠性图
+ * ============================================================ */
+let eceData = [];      // [{conf, correct}]
+let eceKind = 'perfect';
+
+function genData(kind) {
+  const N = 300, data = [];
+  for (let i = 0; i < N; i++) {
+    const conf = 0.05 + Math.random() * 0.95;      // 置信度 ~ U(0.05, 1)
+    let acc;
+    if (kind === 'perfect')      acc = conf;
+    else if (kind === 'over')    acc = conf * conf;
+    else /* under */             acc = Math.min(1, Math.sqrt(conf));
+    data.push({ conf, correct: Math.random() < acc ? 1 : 0 });
+  }
+  return data;
+}
+function computeBins(data, nbins) {
+  const bins = Array.from({ length: nbins }, () => ({ n: 0, conf: 0, acc: 0 }));
+  for (const d of data) {
+    let b = Math.min(nbins - 1, Math.floor(d.conf * nbins));
+    const B = bins[b];
+    B.n++; B.conf += d.conf; B.acc += d.correct;
+  }
+  for (const B of bins) if (B.n) { B.conf /= B.n; B.acc /= B.n; }
+  return bins;
+}
+function computeECE(bins) {
+  const N = bins.reduce((s, b) => s + b.n, 0);
+  let ece = 0;
+  for (const b of bins) if (b.n) ece += (b.n / N) * Math.abs(b.acc - b.conf);
+  return ece;
+}
+
+function drawRelChart() {
+  const canvas = document.getElementById('relChart');
+  const { ctx, w, h } = setupCanvas(canvas);
+  ctx.clearRect(0, 0, w, h);
+  const nbins = 10;
+  const bins = computeBins(eceData, nbins);
+  const padL = 40, padB = 30, padT = 12, padR = 12;
+  const cw = w - padL - padR, ch = h - padT - padB;
+  const bw = cw / nbins;
+
+  // 轴与网格
+  ctx.font = '11px sans-serif';
+  ctx.strokeStyle = '#e3e8ee';
+  for (const v of [0, 0.25, 0.5, 0.75, 1]) {
+    const y = padT + (1 - v) * ch;
+    ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL + cw, y); ctx.stroke();
+    ctx.fillStyle = '#7f8c8d'; ctx.fillText(v.toFixed(2), 6, y + 4);
+  }
+  // 对角线 y=x（完美校准参考）
+  ctx.strokeStyle = '#c0392b'; ctx.setLineDash([5, 4]);
+  ctx.beginPath(); ctx.moveTo(padL, padT + ch); ctx.lineTo(padL + cw, padT); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // 柱：实际准确率
+  bins.forEach((b, i) => {
+    const x = padL + i * bw + 4, width = bw - 8;
+    if (b.n) {
+      const bh = b.acc * ch;
+      ctx.fillStyle = '#4a7db5';
+      ctx.fillRect(x, padT + ch - bh, width, bh);
+      // 平均置信度小蓝条
+      const cy = padT + (1 - b.conf) * ch;
+      ctx.strokeStyle = '#1a5276'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(x, cy); ctx.lineTo(x + width, cy); ctx.stroke();
+      // 样本数
+      ctx.fillStyle = '#95a5a6'; ctx.font = '10px sans-serif';
+      ctx.fillText(b.n, x + width / 2 - 6, padT + ch + 12);
+    }
+    // 分箱左端置信度刻度
+    ctx.fillStyle = '#7f8c8d'; ctx.font = '10px sans-serif';
+    if (i % 2 === 0) ctx.fillText((i / nbins).toFixed(1), padL + i * bw, h - 16);
+  });
+  ctx.fillText('置信度分箱 →', padL + cw - 80, h - 4);
+  ctx.save();
+  ctx.fillStyle = '#1a5276'; ctx.font = '11px sans-serif';
+  ctx.fillText('■ 实际准确率   ─ 平均置信度   - - y=x', padL + 6, padT + 12);
+  ctx.restore();
+
+  // 分箱明细表
+  let html = '<tr><th>箱</th><th>n</th><th>平均置信度</th><th>实际准确率</th><th>|差|</th></tr>';
+  bins.forEach((b, i) => {
+    const gap = b.n ? Math.abs(b.acc - b.conf).toFixed(3) : '—';
+    html += `<tr><td>[${(i / 10).toFixed(1)},${((i + 1) / 10).toFixed(1)})</td><td>${b.n}</td>` +
+      `<td>${b.n ? b.conf.toFixed(3) : '—'}</td><td>${b.n ? b.acc.toFixed(3) : '—'}</td><td>${gap}</td></tr>`;
+  });
+  document.getElementById('binTable').innerHTML = html;
+  document.getElementById('eceShow').textContent = computeECE(bins).toFixed(4);
+}
+
+function setDataset(kind, regen) {
+  eceKind = kind;
+  if (regen || eceData.length === 0 || eceData._kind !== kind) { eceData = genData(kind); eceData._kind = kind; }
+  document.querySelectorAll('.dsBtn').forEach(b => b.classList.toggle('active', b.dataset.ds === kind));
+  drawRelChart();
+}
+
+/* ============================================================
+ * 面板二：字符串熵 vs 语义熵
+ * ============================================================ */
+// 两个内置场景。cluster: 0 = 语义簇"正确答案"，1 = 语义簇"错误答案"（手工标注）
+const SCENARIOS = {
+  wordy: {
+    title: '问题：光在真空中的传播速度大约是多少？（10 次采样的措辞各不相同）',
+    outputs: [
+      { text: '约 30 万公里每秒',            cluster: 0 },
+      { text: '299,792 公里/秒',             cluster: 0 },
+      { text: '约 3×10⁸ 米/秒',              cluster: 0 },
+      { text: '光速约为每秒三十万公里',        cluster: 0 },
+      { text: '接近 30 万 km/s（精确值约 3.0×10⁸ m/s）', cluster: 0 },
+      { text: '约 15 万公里每秒',            cluster: 1 },
+      { text: '光速大约是每秒 20 万公里',      cluster: 1 },
+      { text: '约 1.5×10⁸ 米每秒',           cluster: 1 },
+      { text: '每秒约 10 万公里',            cluster: 1 },
+      { text: '约为音速的 100 万倍，即 34 万公里/秒', cluster: 1 }
+    ],
+    failNote: '<b>本例构造的失效模式</b>：5 个<b>语义完全相同</b>（都对）但<b>措辞各异</b>的回答，加上 5 个互相不同的错误回答。' +
+      '字符串熵 = log₂10 ≈ 3.32 bit（10 个字符串全不同，看似"模型很犹豫"），语义熵 = 1 bit（其实只有"对/错"两簇，5:5）。' +
+      '只看字符串熵会严重高估幻觉风险——这正是语义熵（Kuhn, Gal, Farquhar, ICLR 2023）的提出动机。'
+  },
+  consistent: {
+    title: '问题：《红楼梦》前八十回的作者是谁？（10 次采样高度一致）',
+    outputs: [
+      { text: '曹雪芹', cluster: 0 }, { text: '曹雪芹', cluster: 0 }, { text: '曹雪芹', cluster: 0 },
+      { text: '曹雪芹', cluster: 0 }, { text: '曹雪芹', cluster: 0 }, { text: '曹雪芹', cluster: 0 },
+      { text: '曹雪芹', cluster: 0 }, { text: '曹雪芹', cluster: 0 },
+      { text: '曹雪芹（前八十回）', cluster: 0 },
+      { text: '罗贯中', cluster: 1 }
+    ],
+    failNote: '<b>对照场景</b>：回答高度一致时，字符串熵与语义熵都很低且接近（8×"曹雪芹" 聚成一串 + 1 个变体 + 1 个错误答案）。' +
+      '此场景下字符串熵是语义熵的合理代理——语义熵的增益主要出现在<b>措辞多样</b>的开放式问题上。'
+  }
+};
+let scenarioKey = 'wordy';
+
+// 香农熵（bit）：对 cluster 数组按占比计算
+function clusterEntropy(clusters) {
+  const count = new Map();
+  for (const c of clusters) count.set(c, (count.get(c) || 0) + 1);
+  let h = 0;
+  for (const n of count.values()) { const p = n / clusters.length; h -= p * Math.log2(p); }
+  return { h, k: count.size };
+}
+// 字符串熵：每个不同的字符串自成一簇
+function stringEntropy(outputs) { return clusterEntropy(outputs.map(o => o.text)); }
+
+function renderPanel2() {
+  const sc = SCENARIOS[scenarioKey];
+  document.querySelectorAll('.scBtn').forEach(b => b.classList.toggle('active', b.dataset.sc === scenarioKey));
+
+  // 采样列表（高亮"措辞不同但语义相同"的前 5 条）
+  let html = `<div style="font-size:13px;margin:6px 0"><b>${sc.title}</b></div>`;
+  sc.outputs.forEach((o, i) => {
+    const hl = scenarioKey === 'wordy' && i < 5 ? ' hl' : '';
+    const tag = `<span class="cluster-tag t${o.cluster}">${o.cluster === 0 ? '语义簇 A（正确）' : '语义簇 B（错误）'}</span>`;
+    html += `<div class="sample${hl}"><span class="sidx">#${i + 1}</span>"${o.text}"${tag}</div>`;
+  });
+  document.getElementById('samples').innerHTML = html;
+
+  const se = stringEntropy(sc.outputs);
+  const ce = clusterEntropy(sc.outputs.map(o => o.cluster));
+  document.querySelector('#strEnt .num').textContent = se.h.toFixed(2);
+  document.querySelector('#semEnt .num').textContent = ce.h.toFixed(2);
+  document.getElementById('clusterInfo').innerHTML =
+    `<div class="muted">字符串簇数（完全一致的字符串数）：${se.k}<br>语义簇数（归一化后）：${ce.k}（簇 A × ${sc.outputs.filter(o => o.cluster === 0).length}，簇 B × ${sc.outputs.filter(o => o.cluster === 1).length}）</div>`;
+  document.getElementById('failNote').innerHTML = sc.failNote;
+}
+
+/* ---------------- 事件绑定与初始化 ---------------- */
+document.querySelectorAll('.dsBtn').forEach(b => b.addEventListener('click', () => setDataset(b.dataset.ds, false)));
+document.getElementById('regenBtn').addEventListener('click', () => setDataset(eceKind, true));
+document.querySelectorAll('.scBtn').forEach(b => b.addEventListener('click', () => { scenarioKey = b.dataset.sc; renderPanel2(); }));
+window.addEventListener('resize', drawRelChart);
+
+setDataset('perfect', false);
+renderPanel2();
+</script>
+</body>
+</html>

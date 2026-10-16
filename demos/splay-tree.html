@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Splay 树：旋转动画与代价对比</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Segoe UI", "Microsoft YaHei", -apple-system, sans-serif;
+    background: #fafafa; color: #2c3e50; line-height: 1.6; padding: 20px 28px;
+  }
+  h1 { font-size: 22px; margin-bottom: 6px; }
+  h2 { font-size: 15px; margin-bottom: 6px; color: #34495e; }
+  .intro {
+    background: #eef3f8; border-left: 4px solid #4a7db5;
+    padding: 10px 14px; font-size: 13px; margin-bottom: 14px; border-radius: 0 4px 4px 0;
+  }
+  .intro a { color: #2c66a8; }
+  .layout { display: flex; gap: 16px; flex-wrap: wrap; }
+  .panel {
+    background: #fff; border: 1px solid #dde3ea; border-radius: 6px;
+    padding: 12px 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+  .panel-left  { flex: 3 1 620px; min-width: 480px; }
+  .panel-right { flex: 2 1 380px; min-width: 340px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-bottom: 8px; font-size: 13px; }
+  input[type=text] {
+    border: 1px solid #ccd5dd; border-radius: 4px; padding: 5px 8px; font-size: 13px; width: 260px;
+  }
+  button {
+    background: #4a7db5; color: #fff; border: none; border-radius: 4px;
+    padding: 6px 12px; font-size: 13px; cursor: pointer;
+  }
+  button:hover { background: #3c6a9e; }
+  button:disabled { background: #a5b8cc; cursor: not-allowed; }
+  button.secondary { background: #6b7f94; }
+  button.secondary:hover { background: #586b80; }
+  canvas { display: block; width: 100%; }
+  #treeCanvas { height: 400px; background: #fcfdfe; border: 1px solid #e8edf2; border-radius: 4px; }
+  .status { font-size: 13px; min-height: 22px; color: #7d3c98; margin: 4px 0; }
+  .costbox { border: 1px solid #e3e8ee; border-radius: 6px; padding: 8px 12px; margin: 6px 0; font-size: 13.5px; }
+  .costbox .num { font-size: 22px; font-weight: bold; }
+  .cost-label { font-size: 12px; color: #7f8c8d; }
+  .c-splay .num { color: #1a5276; }
+  .c-static .num { color: #1e8449; }
+  .c-lb .num { color: #c0392b; }
+  .rot-tag {
+    display: inline-block; padding: 1px 10px; border-radius: 10px; font-size: 12px;
+    background: #fdebd0; color: #9c640c; border: 1px solid #f5cba7; min-width: 70px; text-align: center;
+  }
+  .legend { font-size: 12px; color: #5d6d7e; margin-top: 2px; }
+  .note {
+    font-size: 12.5px; color: #5d6d7e; background: #fdf6ec; border-left: 3px solid #d4a017;
+    padding: 8px 12px; margin-top: 12px; border-radius: 0 4px 4px 0;
+  }
+  .note b { color: #8a6d1a; }
+  footer { margin-top: 16px; font-size: 12px; color: #95a5a6; border-top: 1px solid #e3e8ee; padding-top: 8px; }
+</style>
+</head>
+<body>
+
+<h1>Splay 树：自适应旋转与代价对比</h1>
+
+<div class="intro">
+  本演示实现了<b>标准 Splay 树</b>（zig / zig-zig / zig-zag 三种旋转，实现与 Sleator–Tarjan 1985 原文一致），逐步动画展示访问后的伸展过程，
+  并把访问序列的总代价与<b>静态最优 BST</b>（动态规划精确计算）及<b>静态树的信息论下界</b>对比。
+  它对应仓库档案 <a href="../volumes/02-algorithms-data-structures/problems/26-splay-dynamic-optimality.md">../volumes/02-algorithms-data-structures/problems/26-splay-dynamic-optimality.md</a>（#26）。
+  <br><b>它能说明什么</b>：splay 的自适应行为——频繁访问的键会被转到浅处，重复访问变得越来越便宜（工作集性质）。
+  <br><b>它不能说明什么</b>：动态最优性猜想是"对<b>任意</b>访问序列，splay 的总代价与<b>任何</b> BST 算法的最优代价差常数因子以内"。
+  本页只对比 splay 与静态最优树这两个具体算法、只展示有限条序列，<b>既不能证明也不能否证猜想</b>；侧栏的"下界"是静态树的信息论下界，不是动态 BST 的下界（后者需 Wilber 界，未在此计算）。
+</div>
+
+<div class="layout">
+  <!-- ============ 左：树动画 ============ -->
+  <div class="panel panel-left">
+    <h2>树结构动画</h2>
+    <div class="controls">
+      <input type="text" id="seqInput" placeholder="键序列，空格分隔，如：7 3 7 1 7 5" value="7 3 7 1 7 5 2 7 4 7">
+      <button id="loadBtn">载入序列</button>
+      <button id="randBtn" class="secondary">随机生成</button>
+      <button id="stepBtn">单步</button>
+      <button id="playBtn">自动播放</button>
+      <button id="resetBtn" class="secondary">重置树</button>
+    </div>
+    <div class="status" id="statusLine">载入序列后点击"单步"或"自动播放"。每步 = 访问下一个键并完成其伸展。</div>
+    <canvas id="treeCanvas"></canvas>
+    <div class="legend">
+      <span style="color:#117a65">●</span> 刚访问的键　<span style="color:#c0392b">●</span> 当前旋转涉及节点　灰 = 其余节点。
+      当前旋转类型：<span class="rot-tag" id="rotTag">—</span>（zig：单旋；zig-zig：同侧两次；zig-zag：异侧两次）
+    </div>
+  </div>
+
+  <!-- ============ 右：代价对比 ============ -->
+  <div class="panel panel-right">
+    <h2>总代价对比（已处理前缀）</h2>
+    <div class="costbox c-splay">
+      <div class="cost-label">Splay 树总代价 = Σ（访问时被访问键的深度 + 1）</div>
+      <span class="num" id="costSplay">0</span>
+    </div>
+    <div class="costbox c-static">
+      <div class="cost-label">静态最优 BST 总代价（对同一序列的访问频率做 O(k³) 动态规划，同一代价度量）</div>
+      <span class="num" id="costStatic">—</span>
+    </div>
+    <div class="costbox c-lb">
+      <div class="cost-label">静态树信息论下界：Σ fᵢ·log₂(T/fᵢ)（任何静态 BST 的代价下界，由 Kraft 不等式；忽略常数项）</div>
+      <span class="num" id="costLB">—</span>
+    </div>
+    <div class="legend" id="costNote">
+      提示：输入"1 1 1 2 2 3 3 3 3 1 1"这类偏斜序列，观察 splay 的代价逼近甚至优于静态最优树（自适应性）；
+      输入随机均匀序列，两者接近。注意下界只约束<b>静态</b>树——动态 BST（包括 splay）可以低于它，这正是动态最优性研究的起点。
+    </div>
+  </div>
+</div>
+
+<div class="note">
+  <b>代价模型约定</b>：为了可比性，三种度量统一为"搜索时走过的节点数"（= 被访问键在搜索开始时的深度 + 1）。
+  Splay 原文的标准代价模型（3×旋转数等）与伸展势能分析可由此乘常数得到；本页的对比在<b>同一模型</b>内进行，故公平。
+  静态最优树用访问频率（含首次插入）做经典 DP（Knuth 型），是"预先知道全部频率"情形下的最优静态树——splay 无需任何先验即可逼近它，这正是它的卖点。
+</div>
+
+<footer>本演示复现的是已知结果，不构成对开放问题的任何新贡献。</footer>
+
+<script>
+"use strict";
+/* =====================================================================
+ * splay-tree.html —— 标准 Splay 树动画 + 静态最优 BST 对比。
+ * 实现要点（科学正确性）：
+ *   伸展按 Sleator–Tarjan 原文：
+ *     zig     ：父为根，单旋。
+ *     zig-zig ：x 与父同为祖父的左孩子（或同为右孩子），先旋祖父边，再旋父边。
+ *     zig-zag ：x 与父异侧，连旋两次 x（先过父，再过祖父）。
+ *   旋转 rotate(x) 统一把 x 提升过其父。
+ * ===================================================================== */
+
+/* ---------------- 高分屏适配 ---------------- */
+function setupCanvas(canvas) {
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width  = Math.round(rect.width  * dpr);
+  canvas.height = Math.round(rect.height * dpr);
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { ctx, w: rect.width, h: rect.height };
+}
+
+/* ---------------- Splay 树实现 ---------------- */
+function SplayTree() {
+  this.root = null;
+  this.cost = 0;         // 总代价：Σ(访问时深度+1)
+  this.totalAccess = 0;  // 访问总次数 T
+  this.freq = new Map(); // 键 -> 访问频率
+}
+SplayTree.prototype.rotate = function (x) {
+  const p = x.parent, g = p.parent;
+  if (g) { (g.left === p ? g.left = x : g.right = x); } else { this.root = x; }
+  x.parent = g;
+  if (p.left === x) { p.left = x.right; if (x.right) x.right.parent = p; x.right = p; p.parent = x; }
+  else              { p.right = x.left; if (x.left) x.left.parent = p; x.left = p; p.parent = x; }
+};
+/* 搜索 key：沿 BST 路径走到 key（或其插入位置），记录深度代价，然后伸展到根。
+ * 不存在的键会被插入（标准 splay 行为）。返回 {found, depth, rotations:[{type, nodes}]} */
+SplayTree.prototype.access = function (key) {
+  // 1) BST 搜索/插入
+  let depth = 0, parent = null, dir = 0;
+  let cur = this.root;
+  while (cur) {
+    depth++;
+    parent = cur;
+    if (key === cur.key) { dir = 0; break; }
+    else if (key < cur.key) { cur = cur.left; dir = -1; }
+    else { cur = cur.right; dir = 1; }
+  }
+  const found = !!cur;
+  if (!cur) {
+    cur = { key, left: null, right: null, parent };
+    if (!parent) this.root = cur;
+    else if (dir < 0) parent.left = cur; else parent.right = cur;
+  }
+  this.cost += depth;           // 代价：走过的节点数（含终点）
+  this.totalAccess++;
+  this.freq.set(key, (this.freq.get(key) || 0) + 1);
+
+  // 2) 伸展：记录每步旋转类型
+  const rotations = [];
+  while (cur.parent) {
+    const p = cur.parent, g = p.parent;
+    if (!g) {
+      rotations.push({ type: 'zig', nodes: [cur.key, p.key] });
+      this.rotate(cur);
+    } else if ((g.left === p) === (p.left === cur)) {
+      rotations.push({ type: 'zig-zig', nodes: [cur.key, p.key, g.key] });
+      this.rotate(p);   // 先旋祖父边（把 p 提过 g）
+      this.rotate(cur); // 再旋父边（把 x 提过 p）
+    } else {
+      rotations.push({ type: 'zig-zag', nodes: [cur.key, p.key, g.key] });
+      this.rotate(cur);
+      this.rotate(cur);
+    }
+  }
+  return { found, depth, rotations };
+};
+
+/* ---------------- 静态最优 BST（Knuth 型 DP） ----------------
+ * 输入：按序的键数组 keys、频率 freq[i]；
+ * cost[i][j] = 覆盖 keys[i..j] 的最优搜索代价（Σ freq·(深度+1)，根深度记 0）。
+ * 总代价 = Σ freq_i · (该键所在层) + Σ freq —— 由 DP 的经典递推给出。 */
+function optimalStaticCost(keys, freq) {
+  const m = keys.length;
+  if (m === 0) return 0;
+  const pre = new Array(m + 1).fill(0);
+  for (let i = 0; i < m; i++) pre[i + 1] = pre[i] + freq[i];
+  const sum = (i, j) => pre[j + 1] - pre[i]; // 含根的权重和
+  const cost = Array.from({ length: m }, () => new Array(m).fill(0));
+  for (let i = 0; i < m; i++) cost[i][i] = freq[i];
+  for (let len = 2; len <= m; len++) {
+    for (let i = 0; i + len - 1 < m; i++) {
+      const j = i + len - 1;
+      let best = Infinity;
+      for (let r = i; r <= j; r++) {
+        const c = (r > i ? cost[i][r - 1] : 0) + (r < j ? cost[r + 1][j] : 0) + sum(i, j);
+        if (c < best) best = c;
+      }
+      cost[i][j] = best;
+    }
+  }
+  return cost[0][m - 1];
+}
+
+/* ---------------- 静态树信息论下界 ----------------
+ * 任何静态 BST 的期望搜索代价（Σ p_i·depth_i）≥ 熵 H(p)（Kraft 不等式）。
+ * 以访问次数计：Σ f_i · log2(T / f_i)。忽略加性常数。 */
+function entropyLowerBound(freqMap) {
+  let T = 0;
+  for (const f of freqMap.values()) T += f;
+  let s = 0;
+  for (const f of freqMap.values()) s += f * Math.log2(T / f);
+  return s;
+}
+
+/* ---------------- 演示状态 ---------------- */
+const D = {
+  tree: new SplayTree(),
+  seq: [],          // 待处理的键序列
+  pos: 0,           // 下一个待访问的下标
+  lastRot: null,    // 最近一次访问的旋转记录
+  hiKeys: new Set() // 高亮键集合
+};
+let playTimer = null;
+
+/* ---------------- 树布局与绘制 ----------------
+ * 布局：中序位置定 x（叶子等距），深度定 y。 */
+function layoutTree() {
+  const nodes = [];
+  let leaf = 0, maxDepth = 0;
+  (function dfs(nd, d) {
+    if (!nd) return;
+    maxDepth = Math.max(maxDepth, d);
+    dfs(nd.left, d + 1);
+    nd._x = leaf++; nd._d = d; nd._id = nodes.length;
+    nodes.push(nd);
+    dfs(nd.right, d + 1);
+  })(D.tree.root, 0);
+  return { nodes, maxDepth };
+}
+
+function drawTree() {
+  const canvas = document.getElementById('treeCanvas');
+  const { ctx, w, h } = setupCanvas(canvas);
+  ctx.clearRect(0, 0, w, h);
+  const { nodes, maxDepth } = layoutTree();
+  if (nodes.length === 0) {
+    ctx.fillStyle = '#95a5a6'; ctx.font = '13px sans-serif';
+    ctx.fillText('（空树——播放序列即逐步构建）', 16, 28);
+    return;
+  }
+  const pad = 24;
+  const maxLeaf = Math.max(nodes.length, 16);
+  const sx = (w - 2 * pad) / maxLeaf;
+  const sy = (h - 2 * pad) / Math.max(maxDepth + 1, 1);
+  const px = nd => pad + nd._x * sx + sx / 2;
+  const py = nd => pad + nd._d * sy + sy / 2;
+
+  // 边
+  ctx.strokeStyle = '#aab7c4'; ctx.lineWidth = 1.2;
+  for (const nd of nodes) {
+    for (const ch of [nd.left, nd.right]) {
+      if (ch) { ctx.beginPath(); ctx.moveTo(px(nd), py(nd)); ctx.lineTo(px(ch), py(ch)); ctx.stroke(); }
+    }
+  }
+  // 节点
+  ctx.font = '11px sans-serif';
+  for (const nd of nodes) {
+    const x = px(nd), y = py(nd);
+    const isHi = D.hiKeys.has(nd.key);
+    ctx.beginPath(); ctx.arc(x, y, isHi ? 13 : 11, 0, 2 * Math.PI);
+    ctx.fillStyle = isHi ? '#c0392b' : '#d6e4f0';
+    ctx.fill();
+    ctx.strokeStyle = isHi ? '#922b21' : '#7f9cb5'; ctx.lineWidth = 1.2; ctx.stroke();
+    ctx.fillStyle = isHi ? '#fff' : '#2c3e50';
+    const label = String(nd.key);
+    ctx.fillText(label, x - ctx.measureText(label).width / 2, y + 4);
+  }
+}
+
+/* ---------------- 序列处理 ---------------- */
+function loadSeq(text) {
+  const keys = text.trim().split(/[\s,]+/).map(Number).filter(k => Number.isFinite(k));
+  if (keys.length === 0) { alert('请输入有效的键序列'); return false; }
+  D.seq = keys;
+  resetTree();
+  return true;
+}
+function resetTree() {
+  stopPlay();
+  D.tree = new SplayTree();
+  D.pos = 0; D.lastRot = null; D.hiKeys = new Set();
+  document.getElementById('rotTag').textContent = '—';
+  updateStatus('树已重置。点击"单步"或"自动播放"。');
+  refreshAll();
+}
+function stepOnce() {
+  if (D.pos >= D.seq.length) { stopPlay(); updateStatus('序列已全部处理完毕。可修改序列重新载入。'); return false; }
+  const key = D.seq[D.pos++];
+  const res = D.tree.access(key);
+  D.lastRot = res;
+  D.hiKeys = new Set(key === null ? [] : [key]);
+  updateStatus(
+    `第 ${D.pos}/${D.seq.length} 步：访问键 ${key}（搜索走 ${res.depth} 个节点，` +
+    `${res.rotations.length} 次旋转${res.found ? '' : '，为插入'}）。` +
+    (res.rotations.length ? '旋转类型：' + res.rotations.map(r => r.type).join(' → ') : '（键已在根部，无需旋转）')
+  );
+  // 旋转标签：取最后一次旋转类型
+  const tag = document.getElementById('rotTag');
+  tag.textContent = res.rotations.length ? res.rotations[res.rotations.length - 1].type : '（无）';
+  refreshAll();
+  return true;
+}
+function togglePlay() {
+  if (playTimer) { stopPlay(); return; }
+  document.getElementById('playBtn').textContent = '暂停';
+  playTimer = setInterval(() => { if (!stepOnce()) stopPlay(); }, 700);
+}
+function stopPlay() {
+  if (playTimer) { clearInterval(playTimer); playTimer = null; }
+  document.getElementById('playBtn').textContent = '自动播放';
+}
+function updateStatus(s) { document.getElementById('statusLine').textContent = s; }
+
+/* ---------------- 侧栏刷新 ---------------- */
+function refreshAll() {
+  drawTree();
+  const t = D.tree;
+  document.getElementById('costSplay').textContent = t.totalAccess ? t.cost : '0';
+  // 静态最优：基于已处理前缀的频率（与 splay 同一批访问）
+  if (t.totalAccess > 0) {
+    const keys = [...t.freq.keys()].sort((a, b) => a - b);
+    const freq = keys.map(k => t.freq.get(k));
+    const staticCost = optimalStaticCost(keys, freq);
+    const lb = entropyLowerBound(t.freq);
+    document.getElementById('costStatic').textContent = staticCost;
+    document.getElementById('costLB').textContent = lb.toFixed(1) + '（≈）';
+  } else {
+    document.getElementById('costStatic').textContent = '—';
+    document.getElementById('costLB').textContent = '—';
+  }
+}
+
+/* ---------------- 事件绑定与初始化 ---------------- */
+function randomSeq() {
+  const K = 10, len = 20, arr = [];
+  for (let i = 0; i < len; i++) arr.push(1 + Math.floor(Math.random() * K));
+  document.getElementById('seqInput').value = arr.join(' ');
+  loadSeq(arr.join(' '));
+}
+document.getElementById('loadBtn').addEventListener('click', () => loadSeq(document.getElementById('seqInput').value));
+document.getElementById('randBtn').addEventListener('click', randomSeq);
+document.getElementById('stepBtn').addEventListener('click', stepOnce);
+document.getElementById('playBtn').addEventListener('click', togglePlay);
+document.getElementById('resetBtn').addEventListener('click', resetTree);
+document.getElementById('seqInput').addEventListener('keydown', e => { if (e.key === 'Enter') loadSeq(e.target.value); });
+window.addEventListener('resize', refreshAll);
+
+loadSeq(document.getElementById('seqInput').value);
+</script>
+</body>
+</html>

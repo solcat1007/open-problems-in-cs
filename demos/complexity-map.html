@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>复杂性类地图：已证明与猜想</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Segoe UI", "Microsoft YaHei", -apple-system, sans-serif;
+    background: #fafafa; color: #2c3e50; line-height: 1.6; padding: 20px 28px;
+  }
+  h1 { font-size: 22px; margin-bottom: 6px; }
+  .intro {
+    background: #eef3f8; border-left: 4px solid #4a7db5;
+    padding: 10px 14px; font-size: 13px; margin-bottom: 14px; border-radius: 0 4px 4px 0;
+  }
+  .intro a { color: #2c66a8; }
+  .toggle { margin: 10px 0; font-size: 14px; }
+  .toggle button {
+    background: #6b7f94; color: #fff; border: none; border-radius: 4px;
+    padding: 6px 14px; font-size: 13px; cursor: pointer; margin-right: 6px;
+  }
+  .toggle button.active { background: #4a7db5; font-weight: bold; }
+  .layout { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
+  .panel {
+    background: #fff; border: 1px solid #dde3ea; border-radius: 6px;
+    padding: 12px 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+  .map-panel { flex: 3 1 640px; min-width: 520px; }
+  .info-panel { flex: 2 1 380px; min-width: 340px; position: sticky; top: 12px; }
+  svg { display: block; width: 100%; height: auto; }
+  .cls { cursor: pointer; }
+  .cls:hover { opacity: 0.85; }
+  .cls text { pointer-events: none; user-select: none; }
+  .info h2 { font-size: 17px; margin-bottom: 4px; }
+  .info h3 { font-size: 13.5px; margin: 10px 0 2px; color: #34495e; }
+  .info p, .info li { font-size: 13px; }
+  .info ul { padding-left: 20px; }
+  .badge { display: inline-block; font-size: 11px; padding: 1px 8px; border-radius: 10px; margin-left: 6px; vertical-align: middle; }
+  .badge.proven { background: #e8f6ef; color: #1e8449; border: 1px solid #a9dfbf; }
+  .badge.open   { background: #fdf0ef; color: #c0392b; border: 1px solid #f1948a; }
+  .sep { border: none; border-top: 1px dashed #ccd5dd; margin: 8px 0; }
+  details {
+    background: #fff; border: 1px solid #dde3ea; border-radius: 6px;
+    padding: 10px 14px; margin-top: 10px;
+  }
+  summary { font-size: 14px; font-weight: bold; cursor: pointer; color: #34495e; }
+  details p, details li { font-size: 13px; }
+  details ul { padding-left: 20px; margin-top: 4px; }
+  footer { margin-top: 16px; font-size: 12px; color: #95a5a6; border-top: 1px solid #e3e8ee; padding-top: 8px; }
+</style>
+</head>
+<body>
+
+<h1>复杂性类地图：什么已被证明，什么仍是猜想</h1>
+
+<div class="intro">
+  本演示是一张<b>可点击探索的复杂性类包含关系图</b>：点击任一类查看其定义、代表性问题与已知/开放的关系。
+  它对应仓库档案第一册 <a href="../volumes/01-complexity-theory/">../volumes/01-complexity-theory/</a>，尤其是
+  <a href="../volumes/01-complexity-theory/problems/01-p-vs-np.md">01-p-vs-np.md</a>（#1 P vs NP，含三重障碍）。
+  <br><b>它能说明什么</b>：类之间哪些包含关系<b>已被证明</b>（实线嵌套），哪些<b>真包含仍是猜想</b>（切换视图后以虚线分隔显示），以及三重障碍各自排除了哪些证明技术。
+  <br><b>它不能说明什么</b>：图是<b>示意图</b>——椭圆/矩形的位置与大小不含任何形式含义（例如 BQP 的椭圆不与 NP 相交只是排版选择，BQP 与 NP 的真实关系完全未知）；它不提供任何证明。
+</div>
+
+<div class="toggle">
+  视图：
+  <button id="btnProven" class="active">已证明的包含关系</button>
+  <button id="btnConj">猜想：哪些真包含仍未证</button>
+  <span style="font-size:12px;color:#7f8c8d" id="toggleHint">实线嵌套 = 已证明的包含；点击任意区域查看详情。</span>
+</div>
+
+<div class="layout">
+  <!-- ============ 左：SVG 地图 ============ -->
+  <div class="panel map-panel">
+    <svg id="map" viewBox="0 0 640 470" xmlns="http://www.w3.org/2000/svg">
+      <!-- EXPTIME 最外层 -->
+      <g class="cls" data-cls="EXPTIME">
+        <rect x="10" y="10" width="620" height="450" rx="14" fill="#f5f0eb" stroke="#8d6e63" stroke-width="1.6"/>
+        <text x="24" y="32" font-size="15" font-weight="bold" fill="#5d4037">EXPTIME</text>
+        <text x="24" y="47" font-size="10.5" fill="#795548">DTIME(2^(p(n)))：指数时间可解</text>
+      </g>
+      <!-- PSPACE -->
+      <g class="cls" data-cls="PSPACE">
+        <rect x="26" y="56" width="588" height="390" rx="12" fill="#eef2f7" stroke="#5d6d7e" stroke-width="1.5"/>
+        <text x="40" y="77" font-size="14" font-weight="bold" fill="#34495e">PSPACE</text>
+        <text x="40" y="91" font-size="10.5" fill="#5d6d7e">多项式空间可解（时间不限）</text>
+      </g>
+      <!-- PH -->
+      <g class="cls" data-cls="PH">
+        <rect x="42" y="100" width="352" height="330" rx="10" fill="#f0f4ec" stroke="#6a8759" stroke-width="1.5"/>
+        <text x="56" y="120" font-size="13" font-weight="bold" fill="#4a6741">PH 多项式层级</text>
+      </g>
+      <!-- NP -->
+      <g class="cls" data-cls="NP">
+        <rect x="58" y="132" width="230" height="282" rx="9" fill="#fdf3e7" stroke="#b9770e" stroke-width="1.5"/>
+        <text x="72" y="152" font-size="13" font-weight="bold" fill="#9c640c">NP</text>
+        <text x="72" y="166" font-size="10.5" fill="#a5690f">多项式时间可验证</text>
+      </g>
+      <!-- P -->
+      <g class="cls" data-cls="P">
+        <rect x="74" y="178" width="120" height="222" rx="8" fill="#e8f1f8" stroke="#2e6da4" stroke-width="1.5"/>
+        <text x="88" y="198" font-size="13" font-weight="bold" fill="#1a5276">P</text>
+        <text x="88" y="212" font-size="10.5" fill="#21618c">多项式时间可解</text>
+      </g>
+      <!-- NL -->
+      <g class="cls" data-cls="NL">
+        <rect x="90" y="224" width="90" height="162" rx="7" fill="#f4ecf7" stroke="#7d3c98" stroke-width="1.4"/>
+        <text x="102" y="243" font-size="12" font-weight="bold" fill="#6c3483">NL</text>
+        <text x="102" y="256" font-size="10" fill="#8e44ad">不确定对数空间</text>
+      </g>
+      <!-- L -->
+      <g class="cls" data-cls="L">
+        <rect x="104" y="268" width="64" height="106" rx="6" fill="#eaf7f5" stroke="#148f77" stroke-width="1.4"/>
+        <text x="118" y="287" font-size="12" font-weight="bold" fill="#117a65">L</text>
+        <text x="118" y="300" font-size="10" fill="#148f77">对数空间</text>
+      </g>
+      <!-- BPP：被证明含 P、含于 PH/PSPACE -->
+      <g class="cls" data-cls="BPP">
+        <ellipse cx="330" cy="270" rx="88" ry="58" fill="#f9f4f0" stroke="#a04000" stroke-width="1.5"/>
+        <text x="308" y="266" font-size="13" font-weight="bold" fill="#a04000">BPP</text>
+        <text x="284" y="282" font-size="10" fill="#a5690f">随机多项式时间</text>
+      </g>
+      <!-- BQP：含于 PSPACE；与 NP 关系未知（椭圆摆放避开 NP 仅为排版） -->
+      <g class="cls" data-cls="BQP">
+        <ellipse cx="490" cy="270" rx="86" ry="76" fill="#eef6f9" stroke="#1a7fa8" stroke-width="1.5"/>
+        <text x="468" y="266" font-size="13" font-weight="bold" fill="#1a7fa8">BQP</text>
+        <text x="452" y="282" font-size="10" fill="#1a7fa8">量子多项式时间</text>
+      </g>
+      <!-- 猜想视图的分隔线（默认隐藏，由 JS 控制） -->
+      <g id="conjLayer" style="display:none"></g>
+    </svg>
+    <div style="font-size:12px;color:#7f8c8d">示意图：嵌套只表达包含关系，不含几何含义。BPP 被画在 P 之外、PH 之内（P ⊆ BPP ⊆ PH 已证明）；BQP 的椭圆刻意不与 NP 重叠——但这只是排版，二者关系<b>未知</b>（见右栏说明）。</div>
+  </div>
+
+  <!-- ============ 右：信息面板 ============ -->
+  <div class="panel info-panel info" id="infoPanel">
+    <h2 id="infoTitle">点击左侧任一复杂性类</h2>
+    <div id="infoBody" style="font-size:13px;color:#5d6d7e">这里会显示：定义、代表性问题、已被证明的关系（绿标）、仍开放的关系（红标），以及对应的档案链接。</div>
+  </div>
+</div>
+
+<!-- ============ 底部：三重障碍 ============ -->
+<h2 style="margin-top:18px;font-size:16px">三重障碍：为什么 P vs NP 五十年无进展</h2>
+<details>
+  <summary>（一）相对化障碍 — Baker–Gill–Solovay 1975</summary>
+  <p>神谕（oracle）是一台额外的"魔法盒子"：图灵机可以一步查询"串 x 是否属于集合 A"。相对化类 P^A、NP^A 表示允许双方访问同一个神谕后的类。
+  Baker、Gill 与 Solovay 构造了两个神谕：</p>
+  <ul>
+    <li>存在神谕 A 使 P^A = NP^A（A 取 PSPACE 完全集：非确定性对多项式空间计算没有额外能力）；</li>
+    <li>存在神谕 B 使 P^B ≠ NP^B（B 取一个随机集：NP 的指数次猜测能"看穿"B，P 做不到）。</li>
+  </ul>
+  <p>任何"神谕无关"的证明技术——即其每一步推理在带任意神谕的版本中依然成立——必须同时解释这两个相反的结论，而这不可能。因此：</p>
+  <ul>
+    <li><b>排除的技术</b>：纯对角化论证、图灵机模拟计数、"更聪明的归约"类论证——1970 年代的全部主流工具；</li>
+    <li><b>判定规则</b>：一份 P vs NP 的"证明"若只用对角化，<b>必然有错</b>。把它放到神谕世界检验，立刻出现矛盾。</li>
+  </ul>
+</details>
+<details>
+  <summary>（二）自然化障碍 — Razborov–Rudich 1997</summary>
+  <p>证明 P ≠ NP 最直接的路线是<b>电路下界</b>：找到一个 NP 中的显式函数，证明任何多项式规模电路都算不了它。
+  组合式方法的做法是：定义某个"复杂性度量"（如"该函数的电路紧化后需要多少连接"），证明 SAT 类函数的度量高，再证明小电路函数度量低。
+  Razborov 与 Rudich 指出这条路有个隐藏陷阱。称一个度量是<b>自然的</b>，若它同时满足：</p>
+  <ul>
+    <li><b>构造性</b>：给定真值表，可以有效判定它是否具有该性质；</li>
+    <li><b>广泛性</b>：随机布尔函数以不可忽略的概率具有该性质（这是"下界能成立"的前提——随机函数是最难的）。</li>
+  </ul>
+  <p>两者合起来，这个度量就成了一只"伪随机探测器"：真随机函数大概率通过、伪随机函数（密码学 PRG 的输出）大概率不通过——即它攻破了一切基于小电路的伪随机发生器，进而攻破单向函数。</p>
+  <ul>
+    <li><b>排除的技术</b>：几乎所有组合式电路下界论证——电路大小、公式大小、绝大多数已知套路；</li>
+    <li><b>深刻张力</b>：若单向函数存在（我们赖以生存的密码学前提），则"自然"技术无法给出电路下界——<b>证明下界的能力与密码学的存在性相对立</b>；</li>
+    <li><b>已知例外</b>：Williams 的"算法化下界"（对 ACC⁰ 成功）——其使用的性质依赖 SAT 算法的存在，恰恰<b>不满足广泛性</b>，因此绕开了该障碍。这是少数已知可行的路线之一。</li>
+  </ul>
+</details>
+<details>
+  <summary>（三）代数化障碍 — Aaronson–Wigderson 2009</summary>
+  <p>相对化的推广：允许证明技术在神谕之外做<b>低次多项式扩张</b>——把布尔函数提升为有限域上的低次多项式来论证（PCP 定理、交互式证明、IP = PSPACE 的证明都属此类）。
+  Aaronson 与 Wigderson 证明了与相对化类似的"两个神谕"现象：代数化技术同样既能造出 P^◊ = NP^◊ 又能造出 P^◊ ≠ NP^◊ 的世界，因此不足以解决本题。</p>
+  <ul>
+    <li><b>排除的技术</b>：代数化论证、借助低度多项式/和校验（sum-check）协议直觉的分离论证；</li>
+    <li><b>注意</b>：这并不否定代数方法本身的价值（GCT 等纲领仍在探索），排除的是"神谕 + 低次扩张"这一特定形式；</li>
+    <li><b>综合筛选规则</b>：任何只使用上述三类技术之一的 P vs NP 论证<b>必然有错</b>——这一条可在几分钟内排除绝大多数声称的"证明"。判定可信度的最快办法：看它是否正面讨论了三个障碍。</li>
+  </ul>
+</details>
+
+<h2 style="margin-top:18px;font-size:16px">常见误区（取自档案 #1 与标准教材）</h2>
+<details>
+  <summary>误区一：NP 表示"非多项式"（Non-Polynomial）</summary>
+  <p>这是最常见、也最需要根除的错误。NP 是 <b>Nondeterministic Polynomial time</b>（非确定性多项式时间）。
+  NP 中的每个问题都在<b>指数时间</b>内可解（枚举证书即可），且显然包含 P——P 中所有问题都在 NP 中。
+  说"NP 问题就是难问题"是错的；说"NP 表示不可能在多项式时间解决"更是双重错误。</p>
+</details>
+<details>
+  <summary>误区二："试了五十年没解出来，所以 P ≠ NP"</summary>
+  <p>"没人做出来"不是数学证明。这与"没见过黑天鹅所以黑天鹅不存在"是同类推理错误。
+  学界普遍<b>相信</b> P ≠ NP（2019 年 Gasarch 调查中约 88%），但那是信念；信念的依据是三重障碍等结构性证据，而非"试了很久"。</p>
+</details>
+<details>
+  <summary>误区三："如果 P = NP，世界一夜之间天翻地覆"</summary>
+  <p>即使 P = NP，证明构造出的算法也可能是 n^10000 级别的多项式——理论上优雅，实践上未必可用。
+  反过来，"P ≠ NP"也不意味着实际问题不可做：现代 SAT 求解器在工业实例上表现惊人，但那是<b>特定实例分布</b>上的启发式成功，与最坏情况复杂性无关。"具体实例难"与"问题本身难"必须区分。</p>
+</details>
+<details>
+  <summary>误区四："用 NP 完全性可以证明 P ≠ NP"</summary>
+  <p>NP 完全性说明的是<b>相对难度</b>：若 SAT 有多项式算法，则所有 NP 问题都有。它是把"上界"传播的机制，本身不提供任何下界。
+  同理，"问题 X 是 NP 完全的所以没人能解"在逻辑上预设了 P ≠ NP——循环论证。</p>
+</details>
+
+<footer>本演示复现的是已知结果，不构成对开放问题的任何新贡献。</footer>
+
+<script>
+"use strict";
+/* =====================================================================
+ * complexity-map.html —— 复杂性类地图。
+ * 内容全部取自标准结论（Arora–Barak 教材口径），数据对象中的关系清单
+ * 区分 proven（已证明）与 open（未知/猜想），不混淆二者。
+ * ===================================================================== */
+
+/* ---------------- 类的数据 ---------------- */
+const CLASSES = {
+  L: {
+    name: 'L', full: '确定性对数空间',
+    def: '可用 O(log n) 空间（工作带）判定的语言。输入本身只读、不计入空间。',
+    examples: ['图的连通分量判定（U_STCON 是否无向图连通——已知 ∈ L，Reingold 2004）', '整数比较、有序表查找'],
+    proven: ['L ⊆ NL', 'L ⊆ P（空间 ≤ 时间）'],
+    open: ['L = NL 是否成立（SL = L 已由 Reingold 解决，但 NL 仍开放）', 'L = P 几乎肯定不成立，但无法证明'],
+    link: '../volumes/01-complexity-theory/'
+  },
+  NL: {
+    name: 'NL', full: '不确定性对数空间',
+    def: '不确定图灵机用 O(log n) 空间判定的语言；等价于"证书长度 O(log n) 且可对数空间验证"。',
+    examples: ['有向图可达性 STCON（NL 完全）'],
+    proven: ['L ⊆ NL ⊆ P（NL ⊆ P 由配置图可达性归约到 P）', 'NL = coNL（Immerman–Szelepcsényi）——注意这对空间类成立'],
+    open: ['NL 与 P 的真包含', 'NL = L 是否成立'],
+    link: '../volumes/01-complexity-theory/'
+  },
+  P: {
+    name: 'P', full: '确定性多项式时间',
+    def: 'P = ⋃_k DTIME(n^k)：存在确定性图灵机在 O(n^k) 步内判定。',
+    examples: ['最短路、最大流、线性规划、素性判定（AKS 2002）'],
+    proven: ['L ⊆ NL ⊆ P ⊆ NP ⊆ PSPACE ⊆ EXPTIME', 'P ⊆ BPP ⊆ PSPACE'],
+    open: ['P = NP？（千禧年问题，本图的核心）', 'P = BPP？（学界猜想成立，Linal–Wigderson 给出条件性归约：P=BPP 若存在好的电路下界/PRG）'],
+    link: '../volumes/01-complexity-theory/problems/01-p-vs-np.md'
+  },
+  NP: {
+    name: 'NP', full: '非确定性多项式时间',
+    def: 'L ∈ NP ⟺ 存在多项式长的证书 y 与多项式时间验证器 V：x ∈ L ⟺ ∃y V(x,y)=1。即"多项式时间可验证"。',
+    examples: ['SAT（Cook–Levin 完全）、TSP 判定版、图的着色、整数规划'],
+    proven: ['P ⊆ NP（确定性是特殊的非确定性）', 'NP ⊆ PH（第 1 层就是 NP）', 'NP ⊆ PSPACE（逐证书枚举）'],
+    open: ['P vs NP——开放，且三重障碍排除了最自然的证明技术', 'NP 与 PH 真包含？（若 P=NP 则 PH 坍缩到 P）'],
+    link: '../volumes/01-complexity-theory/problems/01-p-vs-np.md'
+  },
+  PH: {
+    name: 'PH', full: '多项式层级',
+    def: 'PH = ⋃_k Σ_k^P：交替使用 k 层存在/全称量词的多项式时间类（Σ₁^P = NP，Π₁^P = coNP）。',
+    examples: ['Σ₂ 完全问题：MINIMUM DNF、给定公式是否存在使其小的赋值模式'],
+    proven: ['NP、coNP ⊆ PH', 'PH ⊆ PSPACE', 'BPP ⊆ PH（Sipser–Gács–Lautemann：BPP ⊆ Σ₂ ∩ Π₂）'],
+    open: ['PH 是否坍缩（P=NP ⇒ 坍缩到 P）', 'PH = PSPACE？'],
+    link: '../volumes/01-complexity-theory/problems/01-p-vs-np.md'
+  },
+  BPP: {
+    name: 'BPP', full: '有界错误概率多项式时间',
+    def: '随机图灵机在多项式时间内、以 ≥ 2/3 概率给出正确判定的语言。',
+    examples: ['多项式恒等测试（PIT）、随机化最小生成树检查'],
+    proven: ['P ⊆ BPP', 'BPP ⊆ PH（Sipser–Gács–Lautemann）', 'BPP ⊆ PSPACE', 'BPP = BPP^BPP（可放大）'],
+    open: ['BPP = P？（主流猜想：好的随机数发生器可去随机化；与电路下界深度纠缠——Impagliazzo–Wigderson）'],
+    link: '../volumes/01-complexity-theory/'
+  },
+  BQP: {
+    name: 'BQP', full: '有界错误量子多项式时间',
+    def: '量子图灵机多项式时间、有界错误可解的语言。',
+    examples: ['整数分解与离散对数（Shor）→ 属于 BQP，且不知是否属于 P', '无结构搜索的 √N 加速（Grover）'],
+    proven: ['BQP ⊆ PSPACE（已证明）', 'BQP ⊆ PP（Adleman–Demarrais–Huang）'],
+    open: ['BQP 与 NP 的关系完全未知：既不知 BQP ⊆ NP，也不知 NP ⊆ BQP', 'BQP ⊆ PH？（猜想不成立）'],
+    link: '../volumes/03-cryptography-security/problems/37-grover-exact-lower-bound.md'
+  },
+  PSPACE: {
+    name: 'PSPACE', full: '多项式空间',
+    def: '多项式空间（时间不限）可判定的语言。',
+    examples: ['广义棋类博弈（国际象棋/围棋广义化，PSPACE 完全）、TQBF（量词布尔公式）'],
+    proven: ['PH ⊆ PSPACE', 'PSPACE ⊆ EXPTIME', 'BQP ⊆ PSPACE', 'PSPACE = NPSPACE（Savitch 定理）'],
+    open: ['PSPACE 与 EXPTIME 真包含？（普遍猜想）', 'PSPACE 与 PH 的分离'],
+    link: '../volumes/01-complexity-theory/'
+  },
+  EXPTIME: {
+    name: 'EXPTIME', full: '指数时间',
+    def: 'EXPTIME = ⋃_k DTIME(2^(n^k))：指数时间可判定。',
+    examples: ['广义国际象棋（带重复局面判定规则时 EXPTIME 完全）、某些规划问题'],
+    proven: ['PSPACE ⊆ EXPTIME（空间 s(n) 的机器配置数 ≤ 2^(s(n))，穷举时间可判定）', 'P ⊊ EXPTIME（时间层级定理——这是少数可证明的严格分离）'],
+    open: ['PSPACE ⊊ EXPTIME（猜想成立，未证）'],
+    link: '../volumes/01-complexity-theory/'
+  }
+};
+
+/* ---------------- 猜想视图：虚线分隔 + 标注 ---------------- */
+// 每条：分隔线的两端坐标、标签、文案
+const CONJ_SEPS = [
+  { x1: 60, y1: 176, x2: 196, y2: 176, label: '猜想 P ⊊ NP', lx: 200, ly: 181 },
+  { x1: 40, y1: 98,  x2: 196, y2: 98,  label: '猜想 PH ⊊ PSPACE', lx: 200, ly: 103 },
+  { x1: 24, y1: 54,  x2: 196, y2: 54,  label: '猜想 PSPACE ⊊ EXPTIME', lx: 200, ly: 59 },
+  { x1: 88, y1: 222, x2: 182, y2: 222, label: '猜想 L ⊊ NL？', lx: 186, ly: 227 },
+  { x1: 258, y1: 208, x2: 424, y2: 208, label: 'BPP = P？（猜想坍缩）／BQP vs NP：完全未知', lx: 300, ly: 203 }
+];
+
+function setView(mode) {
+  document.getElementById('btnProven').classList.toggle('active', mode === 'proven');
+  document.getElementById('btnConj').classList.toggle('active', mode === 'conj');
+  const layer = document.getElementById('conjLayer');
+  const hint = document.getElementById('toggleHint');
+  layer.innerHTML = '';
+  if (mode === 'conj') {
+    hint.textContent = '虚线 = 主流猜想的严格分隔，但均未被证明；标签给出学界共识。';
+    const svgNS = 'http://www.w3.org/2000/svg';
+    for (const s of CONJ_SEPS) {
+      const line = document.createElementNS(svgNS, 'line');
+      line.setAttribute('x1', s.x1); line.setAttribute('y1', s.y1);
+      line.setAttribute('x2', s.x2); line.setAttribute('y2', s.y2);
+      line.setAttribute('stroke', '#c0392b'); line.setAttribute('stroke-width', '1.4');
+      line.setAttribute('stroke-dasharray', '6 4');
+      layer.appendChild(line);
+      const text = document.createElementNS(svgNS, 'text');
+      text.setAttribute('x', s.lx); text.setAttribute('y', s.ly);
+      text.setAttribute('font-size', '10.5'); text.setAttribute('fill', '#c0392b');
+      text.textContent = s.label;
+      layer.appendChild(text);
+    }
+  } else {
+    hint.textContent = '实线嵌套 = 已证明的包含；点击任意区域查看详情。';
+  }
+}
+
+/* ---------------- 信息面板 ---------------- */
+const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+function showClass(key) {
+  const c = CLASSES[key];
+  if (!c) return;
+  document.getElementById('infoTitle').textContent = c.name + ' — ' + c.full;
+  const proven = c.proven.map(x => `<li>${esc(x)} <span class="badge proven">已证明</span></li>`).join('');
+  const open = c.open.map(x => `<li>${esc(x)} <span class="badge open">开放 / 猜想</span></li>`).join('');
+  const ex = c.examples.map(x => `<li>${esc(x)}</li>`).join('');
+  document.getElementById('infoBody').innerHTML = `
+    <h3>定义</h3><p>${esc(c.def)}</p>
+    <h3>代表性问题</h3><ul>${ex}</ul>
+    <h3>已知关系</h3><ul>${proven}</ul>
+    <h3>开放关系</h3><ul>${open}</ul>
+    <h3>对应档案</h3><p><a href="${c.link}">${c.link}</a></p>
+    <hr class="sep">
+    <p style="font-size:12px;color:#8a8f98">注：SVG 中的嵌套只画"已证明的包含"，椭圆位置不含几何意义。</p>`;
+}
+document.querySelectorAll('.cls').forEach(g => {
+  g.addEventListener('click', () => showClass(g.dataset.cls));
+});
+
+/* ---------------- 视图切换与初始化 ---------------- */
+document.getElementById('btnProven').addEventListener('click', () => setView('proven'));
+document.getElementById('btnConj').addEventListener('click', () => setView('conj'));
+setView('proven');
+showClass('P');
+</script>
+</body>
+</html>

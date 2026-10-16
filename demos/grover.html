@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Grover 振幅放大：旋转、峰值与过冲</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Segoe UI", "Microsoft YaHei", -apple-system, sans-serif;
+    background: #fafafa; color: #2c3e50; line-height: 1.6; padding: 20px 28px;
+  }
+  h1 { font-size: 22px; margin-bottom: 6px; }
+  h2 { font-size: 15px; margin-bottom: 6px; color: #34495e; }
+  .intro {
+    background: #eef3f8; border-left: 4px solid #4a7db5;
+    padding: 10px 14px; font-size: 13px; margin-bottom: 14px; border-radius: 0 4px 4px 0;
+  }
+  .intro a { color: #2c66a8; }
+  .layout { display: flex; gap: 16px; flex-wrap: wrap; }
+  .panel {
+    background: #fff; border: 1px solid #dde3ea; border-radius: 6px;
+    padding: 12px 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+  .panel-left  { flex: 3 1 560px; min-width: 460px; }
+  .panel-right { flex: 2 1 420px; min-width: 360px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; margin-bottom: 8px; font-size: 13px; }
+  button {
+    background: #4a7db5; color: #fff; border: none; border-radius: 4px;
+    padding: 6px 12px; font-size: 13px; cursor: pointer;
+  }
+  button:hover { background: #3c6a9e; }
+  button:disabled { background: #a5b8cc; cursor: not-allowed; }
+  button.secondary { background: #6b7f94; }
+  button.secondary:hover { background: #586b80; }
+  .metrics { display: flex; gap: 18px; flex-wrap: wrap; margin: 8px 0; font-size: 14px; }
+  .metrics .m b { font-size: 20px; color: #1a5276; }
+  .status { font-size: 13px; color: #7d3c98; }
+  canvas { display: block; width: 100%; }
+  #circleCanvas { height: 400px; background: #fcfdfe; border: 1px solid #e8edf2; border-radius: 4px; }
+  #probCanvas  { height: 200px; }
+  .legend { font-size: 12px; color: #5d6d7e; margin-top: 2px; }
+  .muted { font-size: 12px; color: #7f8c8d; }
+  table td, table th { border: 1px solid #dde3ea; padding: 2px 8px; }
+  .note {
+    font-size: 12.5px; color: #5d6d7e; background: #fdf6ec; border-left: 3px solid #d4a017;
+    padding: 8px 12px; margin-top: 12px; border-radius: 0 4px 4px 0;
+  }
+  .note b { color: #8a6d1a; }
+  footer { margin-top: 16px; font-size: 12px; color: #95a5a6; border-top: 1px solid #e3e8ee; padding-top: 8px; }
+</style>
+</head>
+<body>
+
+<h1>Grover 振幅放大：旋转、最优停止点与过冲</h1>
+
+<div class="intro">
+  本演示把 N 维搜索空间中的 Grover 迭代投影到由「均匀叠加态 |s⟩」与「标记态 |w⟩」张成的<b>二维平面</b>上——这是教科书的标准画法：
+  每轮迭代让状态向量旋转 2θ（sin θ = 1/√N），成功概率 = sin²((2k+1)θ)。
+  它对应仓库档案 <a href="../volumes/03-cryptography-security/problems/37-grover-exact-lower-bound.md">../volumes/03-cryptography-security/problems/37-grover-exact-lower-bound.md</a>（#37，其中"已解决的紧界 Θ(√N)"部分）。
+  <br><b>它能说明什么</b>：振幅放大的机制、"成功概率 vs 迭代次数"的正弦曲线、最优迭代次数 k* ≈ ⌊π√N/4⌋，以及<b>过冲</b>——迭代过多概率反而下降。过冲与峰的锐利性直观呈现了 √N 界的"紧"。
+  <br><b>它不能说明什么</b>：这是对 2 个振幅平面投影的可视化，<b>不是</b>对 N 维希尔伯特空间的完整模拟（每个基态的相位细节被略去）；它复现的是已知上界 Grover 算法的行为，<b>不能证明</b> BBBV 的 Ω(√N) 下界——下界是关于所有量子算法的陈述。它也不涉及档案中真正开放的非关联 Oracle 模型。
+</div>
+
+<div class="panel" style="margin-bottom:14px">
+  <h2>怎么玩</h2>
+  <ul style="font-size:13px;padding-left:20px">
+    <li><b>调 N</b>：拖动 q = log₂N 滑块（3→8，即 N = 8→256）。观察：N 越大，初始角 θ 越小、每轮旋转 2θ 越小、k* 越大——这就是"√N 步"的直接来源。</li>
+    <li><b>单步/自动播放</b>：逐轮迭代，看向量扫向 |w⟩ 竖轴、绿色扇形（成功概率）变大。转过头（超过 k*）概率反而回落——注意右侧曲线上的红色过冲区。</li>
+    <li><b>过冲实验</b>：把 N 调小（如 8），连续点"迭代一步"穿过 k* 三四倍的距离，看正弦周期完整地走一遍。峰很窄——多转少转都显著变差。</li>
+    <li><b>随机目标</b>：换一个标记项。成功概率与 k* 只依赖 N，不依赖目标位置（这一对称性本身就值得注意）。</li>
+    <li><b>精确模拟验证</b>：页面底部可运行逐基态的完整模拟，与二维投影逐点对比——验证投影在单标记情形是精确的。</li>
+  </ul>
+</div>
+
+<div class="layout">
+  <!-- ============ 左：旋转平面 ============ -->
+  <div class="panel panel-left">
+    <h2>振幅平面（|s⟩–|w⟩ 平面投影）</h2>
+    <div class="controls">
+      <label>q = log₂N = <span id="nVal">4</span>（N = <span id="NVal">16</span>）
+        <input type="range" id="nSlider" min="3" max="8" value="4" style="width:110px"></label>
+      <label>标记项 w = <span id="wVal">5</span>
+        <input type="range" id="wSlider" min="0" max="15" value="5" style="width:110px"></label>
+      <button id="stepBtn">迭代一步</button>
+      <button id="playBtn">自动播放</button>
+      <button id="resetBtn" class="secondary">重置</button>
+      <button id="randBtn" class="secondary">随机目标</button>
+    </div>
+    <div class="metrics">
+      <span class="m">迭代次数 k = <b id="kShow">0</b></span>
+      <span class="m">成功概率 P = <b id="pShow">0.0625</b></span>
+      <span class="m">理论最优 k* = ⌊π/(4θ)⌋ ≈ <b id="optShow">3</b></span>
+    </div>
+    <canvas id="circleCanvas"></canvas>
+    <div class="legend">
+      竖轴 = 标记态 |w⟩，横轴 = 其余 N−1 个态的等振幅方向 |s⊥⟩；初始态 |s⟩ 与横轴夹角 θ（sin θ = 1/√N）。
+      每轮 Grover 迭代（预言机相位翻转 + 扩散算子）使向量顺时针旋转 2θ。绿色扇形面积 ∝ 成功概率。
+    </div>
+  </div>
+
+  <!-- ============ 右：概率曲线 ============ -->
+  <div class="panel panel-right">
+    <h2>成功概率 vs 迭代次数</h2>
+    <canvas id="probCanvas"></canvas>
+    <div class="legend">蓝点 = 当前迭代位置；绿线 = 最优停止点 k*；灰虚线 = 经典随机猜测对照（要走到同样概率需要 Ω(N) 次查询，Grover 只需 Θ(√N)）；
+红区 = 过冲区（迭代超过 k* 后概率下降，直到下一个周期才回升——峰很尖，多转或少转都显著变差）。
+这条正弦曲线正是 √N 界"紧"的原因：它由 2θ ≈ 2/√N 的微小步长累积而成，要走到接近竖轴必须 O(1/θ) = O(√N) 步，且没有"提前踩刹车"的自由度。</div>
+    <div class="note" style="margin-top:10px">
+      <b>关于 k*</b>：精确最优迭代次数由 BBHT（Boyer–Brassard–Høyer–Tapp 1998）刻画为 ⌊π/(4θ)⌋ ≈ π√N/4（当 θ = asin(1/√N)）。
+      本页曲线直接按解析式 P(k) = sin²((2k+1)θ) 绘制，与逐基态的完整模拟在 N ≤ 256 时数值一致（单标记情形下投影是精确的，略去的只是未标记态内部的相位结构）。
+    </div>
+  </div>
+</div>
+
+<!-- ============ 底部：精确模拟验证 + 详细说明 ============ -->
+<div class="layout" style="margin-top:16px">
+  <div class="panel panel-right" style="flex:1 1 520px">
+    <h2>数值验证：逐基态精确模拟 vs 二维投影</h2>
+    <p style="font-size:13px">为了说明"二维投影"不只是近似，这里对全部 N = 2^q 个基态振幅做<b>完整模拟</b>（复数振幅、
+    预言机相位翻转 + 均匀扩散算子，与 Grover 1996 原文一致），并把模拟得到的成功概率与解析式 sin²((2k+1)θ) 逐点对比：</p>
+    <div class="controls">
+      <button id="simBtn" class="secondary">运行精确模拟并对比</button>
+      <span class="status" id="simStatus">未运行。</span>
+    </div>
+    <table style="font-size:12.5px;border-collapse:collapse" id="simTable"></table>
+    <div class="muted" style="font-size:11.5px;margin-top:6px">若最大偏差在浮点误差量级（~1e-15），则说明单标记情形下二维投影<b>是精确的</b>——
+    被略去的只是未标记态内部的相对相位（它们在测量意义下表现为一个集体方向）。多标记或非均匀初态时投影才变为近似。</div>
+  </div>
+  <div class="panel panel-right" style="flex:1 1 420px">
+    <h2>常见误区（取自档案 #37）</h2>
+    <ul style="font-size:13px;padding-left:18px">
+      <li><b>"Grover 的 Ω(√N) 下界尚未被证明"</b>——恰恰相反：BBBV 1997 已给出与上界匹配的下界，标准无序搜索是<b>已解决的紧界</b>，不是开放问题。</li>
+      <li><b>"Grover 能破解所有对称密码"</b>——它给的是平方根<b>查询复杂度</b>加速；实际攻击还受电路深度、量子内存、纠错等工程因素约束（档案 #59）。</li>
+      <li><b>"√N 是万能最优界"</b>——只对<b>无结构</b>搜索成立；有结构的问题（如 Shor 的分解）可以多项式时间解决。</li>
+      <li><b>"精确成功也能 O(√N)"</b>——精确搜索需要 Θ(N) 查询；√N 是<b>有界错误</b>情形的结论。</li>
+      <li><b>"本题未解决"</b>——本题（#37）标为 PARTIAL 是因为<b>非关联 Oracle 模型</b>等削弱查询结构的变体仍开放；标准模型部分早已关闭。本演示模拟的正是标准模型。</li>
+    </ul>
+  </div>
+</div>
+
+<div class="note">
+  <b>密码学注脚</b>：Grover 把对 2ⁿ 密钥空间的穷举从 2ⁿ 次查询降到约 2^(n/2) 次——这是对称密码安全参数减半的来源（AES-128 → 需按 2⁶⁴ 量子攻击评估）。但这只是<b>查询复杂度</b>；实际攻击还受电路深度、量子内存等工程因素约束（见档案 #59）。
+  精确成功（概率恰为 1）需要 Θ(N) 查询，√N 只对"高概率"成立——见档案"已堵死的路径"。
+</div>
+
+<!-- ============ 数学细节（可展开） ============ -->
+<details style="margin-top:14px;background:#fff;border:1px solid #dde3ea;border-radius:6px;padding:10px 14px">
+  <summary style="font-weight:bold;cursor:pointer;font-size:14px">数学细节：2θ 旋转从何而来，k* 公式怎么推导</summary>
+  <div style="font-size:13px;padding:8px 4px">
+    <p><b>1. 状态空间压缩为二维。</b>设 N = 2ⁿ，标记态 |w⟩，其余态的均匀叠加 |r⟩ = (1/√(N−1))·Σ_{x≠w}|x⟩。
+    初始态 |s⟩ = (1/√N)|w⟩ + √((N−1)/N)|r⟩ 落在 span{|w⟩, |r⟩} 平面内。
+    Grover 的两个算子都是反射：O 关于与 |w⟩ 正交的超平面反射（图中横轴方向不动、竖轴分量变号），
+    D 关于初始态 |s⟩ 反射。两次反射之积是一个旋转：D·O 恰好把这个平面里的状态向量朝 |w⟩ 方向旋转 <b>2θ</b>，
+    其中 sin θ = ⟨w|s⟩ = 1/√N。
+    所以 k 轮迭代后状态与横轴夹角为 (2k+1)θ，成功概率 = 该角正弦的平方：</p>
+    <p style="text-align:center">P(k) = sin²((2k+1)θ)，θ = arcsin(1/√N)。</p>
+    <p><b>2. 最优迭代次数。</b>要让 (2k+1)θ ≈ π/2（向量接近竖轴 |w⟩），需要 k ≈ π/(4θ) − 1/2。
+    由 sin θ ≈ θ ≈ 1/√N（N 大时），得 k* ≈ (π/4)·√N，精确公式为 k* = ⌊π/(4θ)⌋（BBHT 1998 的刻画）。
+    本页顶部显示的"理论最优 k*"用的正是精确式，右侧括注 ≈ ⌊π√N/4⌋ 是大 N 近似。</p>
+    <p><b>3. 过冲为何出现、下界为何因此是紧的。</b>旋转步长固定为 2θ，没法"踩刹车"：
+    向量越过竖轴后 P(k) 开始下降，直到 (2k+1)θ = π − φ 后才回升——峰的宽度是 O(1) 而不是 O(√N)。
+    换句话说，<b>不存在"运气好早点到"的迭代数</b>：要把概率推到接近 1，任何逐轮使用同一个 2θ 步长的算法都必须走 Θ(1/θ) = Θ(√N) 步。
+    BBBV 的下界把这个直觉对<b>所有</b>量子算法（包括任意改变迭代策略的算法）严格化了，所以上下界匹配、界是紧的。</p>
+    <p><b>4. 本演示与完整模拟的关系。</b>右侧"精确模拟"面板对全部 N 个复振幅执行 O（相位翻转）与 D（关于均匀叠加的反射），
+    与投影公式逐点一致（偏差在 1e-15 浮点量级）。这说明单标记情形下二维投影<b>不含任何近似</b>；
+    真正被压缩掉的只是未标记态之间的内部相位结构——在"只问 P(测得 w)"这个意义上它们合并为一个方向是严格合法的。</p>
+    <p><b>5. 与经典对照。</b>概率曲线图中的灰色虚线是经典随机猜测（每次查询独立猜一个项）的命中概率 1−(1−1/N)^k：
+    要达到 90% 需要约 2.3N 次查询，而 Grover 用约 (π/4)√N 次达到接近 1 的概率——两条曲线的横坐标之比正是平方根加速的直观形式。
+    注意比较的对象是"查询次数"而非"时间"；在标准的查询复杂度模型里这二者对 Grover 是一致的（每轮迭代一次预言机查询）。</p>
+  </div>
+</details>
+
+<footer>本演示复现的是已知结果，不构成对开放问题的任何新贡献。</footer>
+
+<script>
+"use strict";
+/* =====================================================================
+ * grover.html —— Grover 振幅放大的 2D 投影可视化。
+ * 数学：单标记情形下，状态始终落在 span{|w⟩, |s⊥⟩} 内，
+ *   与 |s⊥⟩ 的夹角 φ_k = (2k+1)θ，θ = asin(1/√N)，
+ *   成功概率 P(k) = sin²((2k+1)θ) = sin²(φ_k)。
+ * 每轮迭代等价于向量向 |w⟩ 方向旋转 2θ。
+ * 本页只画投影（不逐基态模拟），并注明这一点——科学上诚实。
+ * ===================================================================== */
+
+/* ---------------- 高分屏适配 ---------------- */
+function setupCanvas(canvas) {
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width  = Math.round(rect.width  * dpr);
+  canvas.height = Math.round(rect.height * dpr);
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { ctx, w: rect.width, h: rect.height };
+}
+
+/* ---------------- 状态 ---------------- */
+const S = { n: 4, w: 5, k: 0 };        // k = 已完成的迭代次数
+let animTimer = null;
+
+function N()   { return 1 << S.n; }
+function theta() { return Math.asin(1 / Math.sqrt(N())); }   // θ = asin(1/√N)
+function prob(k) { return Math.pow(Math.sin((2 * k + 1) * theta()), 2); }
+function optimalK() { return Math.floor(Math.PI / (4 * theta())); }  // ⌊π/(4θ)⌋ ≈ ⌊π√N/4⌋
+
+/* ---------------- 旋转平面绘制 ----------------
+ * 布局约定：
+ *   画布中心 (cx, cy)，参考圆半径 R；
+ *   数学约定（y 向上），绘制时取 cy − R·sin(a) 完成 y 翻转；
+ *   竖轴 = |w⟩（成功概率沿它增长），横轴 = |s⊥⟩（未标记方向的等振幅叠加）；
+ *   状态向量与横轴夹角 φ_k = (2k+1)θ，k 为已完成的迭代次数。
+ * 显示参数 displayK 允许非整数（用于单步之间的平滑旋转插值动画）。 */
+function drawCircle(displayK) {
+  const canvas = document.getElementById('circleCanvas');
+  const { ctx, w, h } = setupCanvas(canvas);
+  ctx.clearRect(0, 0, w, h);
+  const cx = w * 0.46, cy = h * 0.62;
+  const R = Math.min(w * 0.36, h * 0.52);
+
+  const th = theta();
+  const unitX = Math.cos(th), unitY = Math.sin(th); // 初始态 |s⟩ 的方向（单位向量）
+  const phi = (2 * displayK + 1) * th;              // 当前状态与横轴夹角
+  const vx = Math.cos(phi), vy = Math.sin(phi);
+
+  // 成功概率扇形（从当前向量位置扫到 |w⟩ 竖轴；手绘路径保证与向量同步）
+  ctx.fillStyle = 'rgba(30,132,73,0.20)';
+  const a0 = Math.min(phi, Math.PI / 2);   // 过冲(φ>π/2)时扇形收窄，直观显示概率回落
+  ctx.beginPath(); ctx.moveTo(cx, cy);
+  const steps = 48;
+  for (let i = 0; i <= steps; i++) {
+    const a = a0 + (Math.PI / 2 - a0) * i / steps;
+    ctx.lineTo(cx + R * Math.cos(a), cy - R * Math.sin(a));
+  }
+  ctx.closePath(); ctx.fill();
+
+  // 参考圆
+  ctx.strokeStyle = '#d7dee6'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(cx, cy, R, 0, 2 * Math.PI); ctx.stroke();
+
+  // 坐标轴：竖轴 |w⟩，横轴 |s⊥⟩
+  ctx.lineWidth = 1.4;
+  ctx.strokeStyle = '#1e8449';
+  ctx.beginPath(); ctx.moveTo(cx, cy + R * 1.12); ctx.lineTo(cx, cy - R * 1.12); ctx.stroke();
+  ctx.strokeStyle = '#7f8c8d';
+  ctx.beginPath(); ctx.moveTo(cx - R * 1.12, cy); ctx.lineTo(cx + R * 1.12, cy); ctx.stroke();
+
+  ctx.font = '13px sans-serif'; ctx.fillStyle = '#1e8449';
+  ctx.fillText('|w⟩ 标记态（N=1 项）', cx + 8, cy - R * 1.12 + 4);
+  ctx.fillStyle = '#7f8c8d';
+  ctx.fillText('|s⊥⟩ 其余 ' + (N() - 1) + ' 个态的等振幅方向', cx - R * 1.1, cy + 18);
+
+  // 初始态 |s⟩（虚线）
+  ctx.strokeStyle = '#a9b6c2'; ctx.setLineDash([5, 4]);
+  ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + unitX * R, cy - unitY * R); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#7f8c8d';
+  ctx.fillText('|s⟩ 初始均匀叠加态', cx + unitX * R - 130, cy - unitY * R - 6);
+  // θ 角标注
+  ctx.fillText('θ = ' + (th * 180 / Math.PI).toFixed(2) + '°',
+    cx + Math.cos(th / 2) * R * 0.42 + 6, cy - Math.sin(th / 2) * R * 0.42);
+
+  // 当前状态向量
+  ctx.strokeStyle = '#1a5276'; ctx.lineWidth = 2.4;
+  ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + vx * R, cy - vy * R); ctx.stroke();
+  ctx.fillStyle = '#1a5276';
+  ctx.beginPath(); ctx.arc(cx + vx * R, cy - vy * R, 5, 0, 2 * Math.PI); ctx.fill();
+  ctx.fillText('|ψ' + displayK + '⟩', cx + vx * R + 8, cy - vy * R + 4);
+
+  // 旋转方向提示（2θ 每步）
+  ctx.fillStyle = '#5d6d7e'; ctx.font = '12px sans-serif';
+  ctx.fillText('每轮 Grover 迭代：向量向 |w⟩ 旋转 2θ = ' + (2 * th * 180 / Math.PI).toFixed(2) + '°', 14, h - 10);
+}
+
+/* ---------------- 概率曲线 ---------------- */
+function drawProbCurve() {
+  const canvas = document.getElementById('probCanvas');
+  const { ctx, w, h } = setupCanvas(canvas);
+  ctx.clearRect(0, 0, w, h);
+  const padL = 36, padB = 22, padT = 8, padR = 10;
+  const cw = w - padL - padR, ch = h - padT - padB;
+  const kOpt = optimalK();
+  const kMax = Math.min(Math.max(2 * kOpt + 4, 8), 400); // 画到过冲之后
+
+  const X = k => padL + k / kMax * cw;
+  const Y = p => padT + (1 - p) * ch;
+
+  // 网格与轴
+  ctx.strokeStyle = '#e3e8ee'; ctx.font = '11px sans-serif'; ctx.fillStyle = '#7f8c8d';
+  for (const p of [0.25, 0.5, 0.75, 1]) {
+    ctx.beginPath(); ctx.moveTo(padL, Y(p)); ctx.lineTo(padL + cw, Y(p)); ctx.stroke();
+    ctx.fillText(p.toFixed(2), 4, Y(p) + 4);
+  }
+  ctx.strokeStyle = '#aab7c4';
+  ctx.beginPath(); ctx.moveTo(padL, padT + ch); ctx.lineTo(padL + cw, padT + ch); ctx.stroke();
+
+  // 经典随机猜测对照：每次查询独立猜一个项，k 次查询至少命中一次的概率。
+  // 与量子曲线对比可直观看到"平方根加速"：经典要到 k≈N 才接近 1，量子只需 k≈√N。
+  ctx.strokeStyle = '#8a8f98'; ctx.lineWidth = 1.2; ctx.setLineDash([2, 3]);
+  ctx.beginPath();
+  for (let k = 0; k <= kMax; k += 0.5) {
+    const pc = 1 - Math.pow(1 - 1 / N(), k);
+    const y = Y(Math.min(pc, 1));
+    k === 0 ? ctx.moveTo(X(k), y) : ctx.lineTo(X(k), y);
+  }
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#8a8f98';
+  ctx.fillText('经典随机猜测 1−(1−1/N)^k', X(kMax) - 150, Y(0.55));
+
+  // 过冲区（k > kOpt）红色淡染
+  ctx.fillStyle = 'rgba(192,57,43,0.08)';
+  ctx.fillRect(X(kOpt), padT, padL + cw - X(kOpt), ch);
+
+  // 曲线 P(k) = sin²((2k+1)θ)
+  ctx.strokeStyle = '#4a7db5'; ctx.lineWidth = 1.8;
+  ctx.beginPath();
+  for (let k = 0; k <= kMax; k += 0.25) {
+    const y = Y(prob(k));
+    k === 0 ? ctx.moveTo(X(k), y) : ctx.lineTo(X(k), y);
+  }
+  ctx.stroke();
+
+  // 最优停止点
+  ctx.strokeStyle = '#1e8449'; ctx.setLineDash([4, 4]);
+  ctx.beginPath(); ctx.moveTo(X(kOpt), padT); ctx.lineTo(X(kOpt), padT + ch); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#1e8449';
+  ctx.fillText('k* = ' + kOpt + '（⌊π/(4θ)⌋ ≈ ⌊π√N/4⌋ = ' + Math.floor(Math.PI * Math.sqrt(N()) / 4) + '）', X(kOpt) + 4, padT + 12);
+  ctx.fillStyle = '#c0392b';
+  ctx.fillText('过冲区', X(kOpt) + (padL + cw - X(kOpt)) / 2 - 20, padT + 28);
+
+  // 当前位置
+  const px = X(Math.min(S.k, kMax)), py = Y(prob(S.k));
+  ctx.fillStyle = '#1a5276';
+  ctx.beginPath(); ctx.arc(px, py, 4.5, 0, 2 * Math.PI); ctx.fill();
+}
+
+/* ---------------- 指标刷新 ---------------- */
+function refresh(displayK) {
+  if (displayK === undefined) displayK = S.k;
+  document.getElementById('nVal').textContent = S.n;
+  document.getElementById('NVal').textContent = N();
+  document.getElementById('wVal').textContent = S.w;
+  document.getElementById('kShow').textContent = S.k;
+  document.getElementById('pShow').textContent = prob(S.k).toFixed(4);
+  document.getElementById('optShow').textContent = optimalK();
+  drawCircle(displayK);
+  drawProbCurve();
+}
+
+/* ---------------- 交互动画 ---------------- */
+function stepOnce() {
+  if (S.k >= 3 * optimalK() + 4) { S.k = 0; } // 转过三倍 k* 后自动重来，便于观察循环
+  S.k++;
+  animateFrom(S.k - 1, S.k);
+}
+// 平滑旋转动画：从 prevK 到 k 插值显示角度
+function animateFrom(prevK, k) {
+  cancelAnimationFrame(animTimer);
+  const t0 = performance.now(), dur = 260;
+  (function frame(now) {
+    const t = Math.min((now - t0) / dur, 1);
+    const disp = prevK + (k - prevK) * ease(t);
+    refresh(disp);
+    if (t < 1) animTimer = requestAnimationFrame(frame);
+  })(performance.now());
+}
+function ease(t) { return 1 - Math.pow(1 - t, 3); }
+
+let playing = false;
+function togglePlay() {
+  playing = !playing;
+  document.getElementById('playBtn').textContent = playing ? '暂停' : '自动播放';
+  if (playing) (function loop() {
+    if (!playing) return;
+    stepOnce();
+    setTimeout(loop, 420);
+  })();
+}
+
+function reset() {
+  playing = false;
+  document.getElementById('playBtn').textContent = '自动播放';
+  S.k = 0; cancelAnimationFrame(animTimer);
+  refresh();
+}
+function setN(nv) {
+  S.n = nv;
+  const ws = document.getElementById('wSlider');
+  ws.max = N() - 1;
+  if (S.w > N() - 1) { S.w = N() - 1; ws.value = S.w; }
+  reset();
+}
+function randTarget() {
+  S.w = Math.floor(Math.random() * N());
+  document.getElementById('wSlider').value = S.w;
+  reset();
+}
+
+/* ---------------- 逐基态精确模拟（用于与二维投影对比验证） ----------------
+ * 状态：复数振幅数组 [Re0, Im0, Re1, Im1, ...]。
+ * 一轮 Grover 迭代 G = D·O：
+ *   O（预言机）：对标记态 |w⟩ 的振幅乘 -1（相位翻转）；
+ *   D（扩散算子）：aᵢ → 2·⟨s|a⟩ − aᵢ，其中 ⟨s|a⟩ = Σaⱼ/N（对均匀叠加的反射）。
+ * 这是教科书实现，N ≤ 256 时 O(N) 每轮，完全可承受。 */
+function simulateGrover(nQubits, wIdx, kIters) {
+  const Nsz = 1 << nQubits;
+  const re = new Float64Array(Nsz).fill(1 / Math.sqrt(Nsz));
+  const im = new Float64Array(Nsz);
+  for (let it = 0; it < kIters; it++) {
+    // 预言机：翻转标记态相位
+    re[wIdx] = -re[wIdx]; im[wIdx] = -im[wIdx];
+    // 扩散：a → 2⟨s|a⟩s − a（s = 均匀叠加，全实）
+    let meanRe = 0;
+    for (let i = 0; i < Nsz; i++) meanRe += re[i];
+    meanRe /= Nsz;
+    for (let i = 0; i < Nsz; i++) { re[i] = 2 * meanRe - re[i]; }  // im 分量同被反射：⟨s|a⟩ 的虚部抵消后统一处理
+    // 严格起见，虚部同样做反射（meanIm 一般为 0，但保留一般形式）
+    let meanIm = 0;
+    for (let i = 0; i < Nsz; i++) meanIm += im[i];
+    meanIm /= Nsz;
+    for (let i = 0; i < Nsz; i++) { im[i] = 2 * meanIm - im[i]; }
+  }
+  const p = re[wIdx] * re[wIdx] + im[wIdx] * im[wIdx];
+  return { p, re, im };
+}
+
+function runSimulation() {
+  const st = document.getElementById('simStatus');
+  st.textContent = '模拟中……';
+  setTimeout(() => {
+    const nQ = S.n, w = S.w, Nsz = 1 << nQ;
+    const kMax = Math.min(2 * optimalK() + 6, 400);
+    let maxDev = 0;
+    const rows = [];
+    for (let k = 0; k <= kMax; k++) {
+      const { p } = simulateGrover(nQ, w, k);
+      const analytic = prob(k);
+      const dev = Math.abs(p - analytic);
+      if (dev > maxDev) maxDev = dev;
+      if (k <= 5 || k === optimalK() || k === kMax) rows.push({ k, sim: p, ana: analytic, dev });
+    }
+    // 判定：最大偏差应 < N·1e-12 的量级（浮点累积）
+    const tol = 1e-10;
+    st.textContent = `完成：k = 0…${kMax} 逐点对比，最大偏差 = ${maxDev.toExponential(2)}（判定阈值 ${tol}）——` +
+      (maxDev < tol ? '投影公式与完整模拟一致 ✔' : '存在超出浮点误差的偏差 ✘（请反馈）');
+    let html = '<tr><th>迭代 k</th><th>精确模拟 P(k)</th><th>解析投影 sin²((2k+1)θ)</th><th>偏差</th></tr>';
+    for (const r of rows) {
+      html += `<tr><td>${r.k}${r.k === optimalK() ? '（k*）' : ''}</td><td>${r.sim.toFixed(6)}</td><td>${r.ana.toFixed(6)}</td><td>${r.dev.toExponential(1)}</td></tr>`;
+    }
+    document.getElementById('simTable').innerHTML = html;
+  }, 20);
+}
+
+/* ---------------- 事件绑定与初始化 ---------------- */
+document.getElementById('nSlider').addEventListener('input', e => setN(+e.target.value));
+document.getElementById('wSlider').addEventListener('input', e => { S.w = +e.target.value; reset(); });
+document.getElementById('stepBtn').addEventListener('click', stepOnce);
+document.getElementById('playBtn').addEventListener('click', togglePlay);
+document.getElementById('resetBtn').addEventListener('click', reset);
+document.getElementById('randBtn').addEventListener('click', randTarget);
+document.getElementById('simBtn').addEventListener('click', runSimulation);
+window.addEventListener('resize', refresh);
+refresh();
+</script>
+</body>
+</html>

@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>随机 3-SAT 的 DPLL 求解：指数增长与相变</title>
+<style>
+  /* ============ 全局样式：浅色简洁主题 ============ */
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Segoe UI", "Microsoft YaHei", -apple-system, sans-serif;
+    background: #fafafa; color: #2c3e50; line-height: 1.6;
+    padding: 20px 28px;
+  }
+  h1 { font-size: 22px; margin-bottom: 6px; }
+  h2 { font-size: 15px; margin-bottom: 6px; color: #34495e; }
+  .intro {
+    background: #eef3f8; border-left: 4px solid #4a7db5;
+    padding: 10px 14px; font-size: 13px; margin-bottom: 14px; border-radius: 0 4px 4px 0;
+  }
+  .intro a { color: #2c66a8; }
+  .layout { display: flex; gap: 16px; flex-wrap: wrap; }
+  .panel {
+    background: #fff; border: 1px solid #dde3ea; border-radius: 6px;
+    padding: 12px 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+  .panel-left  { flex: 3 1 640px; min-width: 480px; }
+  .panel-right { flex: 2 1 380px; min-width: 340px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; margin-bottom: 8px; font-size: 13px; }
+  .controls label { display: inline-flex; align-items: center; gap: 6px; }
+  button {
+    background: #4a7db5; color: #fff; border: none; border-radius: 4px;
+    padding: 6px 12px; font-size: 13px; cursor: pointer;
+  }
+  button:hover { background: #3c6a9e; }
+  button:disabled { background: #a5b8cc; cursor: not-allowed; }
+  button.secondary { background: #6b7f94; }
+  button.secondary:hover { background: #586b80; }
+  input[type=range] { vertical-align: middle; }
+  .stat { font-size: 13px; margin: 4px 0; }
+  .stat b { color: #1a5276; }
+  .status { font-size: 13px; min-height: 20px; color: #7d3c98; }
+  canvas { display: block; width: 100%; }
+  #treeCanvas { height: 430px; background: #fcfdfe; border: 1px solid #e8edf2; border-radius: 4px; }
+  .chartBox { height: 190px; margin-top: 4px; }
+  .legend { font-size: 12px; color: #5d6d7e; margin-top: 2px; }
+  .note {
+    font-size: 12.5px; color: #5d6d7e; background: #fdf6ec; border-left: 3px solid #d4a017;
+    padding: 8px 12px; margin-top: 12px; border-radius: 0 4px 4px 0;
+  }
+  .note b { color: #8a6d1a; }
+  footer { margin-top: 16px; font-size: 12px; color: #95a5a6; border-top: 1px solid #e3e8ee; padding-top: 8px; }
+</style>
+</head>
+<body>
+
+<h1>随机 3-SAT 的 DPLL 求解：亲眼看指数增长与相变</h1>
+
+<div class="intro">
+  本演示实现了一个带单元传播的 <b>DPLL 回溯求解器</b>，在随机生成的 3-SAT 实例上运行，并把搜索决策树动画化。
+  它对应仓库档案 <a href="../volumes/01-complexity-theory/problems/01-p-vs-np.md">../volumes/01-complexity-theory/problems/01-p-vs-np.md</a>（#1 P vs NP，其"可运行实验"一节）。
+  <br><b>它能说明什么</b>：DPLL 的搜索代价随变量数 <i>n</i> 急剧（近似指数）增长；求解难度在子句/变量比 α≈4.26 的相变点附近出现峰值。
+  <br><b>它不能说明什么</b>：这只测了<b>一个算法</b>在<b>一种随机实例分布</b>上的<b>有限规模</b>表现，不能证明 SAT 的任何计算下界，更不能证明 P≠NP——"某个算法在某类实例上慢"与"问题本身没有快速算法"是两回事。
+</div>
+
+<div class="layout">
+  <!-- ============ 左侧：决策树动画 ============ -->
+  <div class="panel panel-left">
+    <h2>DPLL 决策树动画</h2>
+    <div class="controls">
+      <label>变量数 n = <span id="nVal">10</span><input type="range" id="nSlider" min="4" max="18" value="10" style="width:120px"></label>
+      <label>子句/变量比 α = <span id="aVal">4.2</span><input type="range" id="aSlider" min="20" max="70" value="42" style="width:120px"></label>
+      <button id="solveBtn">生成随机 3-SAT 并求解</button>
+      <button id="replayBtn" class="secondary" disabled>重播动画</button>
+      <label>动画速度 <input type="range" id="speedSlider" min="1" max="30" value="8" style="width:90px"></label>
+    </div>
+    <div class="stat">α = 子句数 m ÷ 变量数 n（此处 m = <span id="mShow">-</span>）。随机 3-SAT 在 α≈4.26 附近存在可满足性相变。</div>
+    <div class="status" id="statusLine">点击"生成随机 3-SAT 并求解"开始。</div>
+    <canvas id="treeCanvas"></canvas>
+    <div class="legend">
+      图例：<span style="color:#1a5276">●</span> 分支决策（蓝=赋真，橙=赋假）　<span style="color:#7d3c98">●</span> 单元传播赋值　<span style="color:#c0392b">●</span> 回溯（冲突后撤销）　<span style="color:#1e8449">★</span> 找到满足赋值　<span style="color:#7f8c8d">◆</span> 已证 UNSAT
+    </div>
+  </div>
+
+  <!-- ============ 右侧：统计曲线 ============ -->
+  <div class="panel panel-right">
+    <h2>曲线一：求解代价 vs 变量数（对数纵轴）</h2>
+    <div class="controls">
+      <button id="nScanBtn" class="secondary">运行 n 扫描实验</button>
+      <span style="font-size:12px;color:#7f8c8d">每组 n 各跑 5 个实例，取中位数</span>
+    </div>
+    <div class="chartBox"><canvas id="chartN"></canvas></div>
+    <div class="stat" id="nScanStat">代价以「DPLL 分支节点数」计：它确定性地反映搜索规模，比挂钟时间噪声小得多，是对求解时间的标准代理指标。</div>
+
+    <h2 style="margin-top:12px">曲线二：求解代价 vs α（相变峰）</h2>
+    <div class="controls">
+      <button id="aScanBtn" class="secondary">运行 α 扫描实验</button>
+      <span style="font-size:12px;color:#7f8c8d">固定 n（取 ≤12），α 从 2.0 到 6.5，每组 5 个实例取中位数</span>
+    </div>
+    <div class="chartBox"><canvas id="chartA"></canvas></div>
+    <div class="stat" id="aScanStat">理论预期：峰值出现在 α≈4.26（3-SAT 相变点）附近。若 n 较小峰会被抹平，建议先用较小 n 观察。</div>
+  </div>
+</div>
+
+<div class="note">
+  <b>重要限定</b>：n 扫描在当前 α 下进行；单实例可能在节点上限（50 万）内跑不完，此时记为"超时"并以中断时的节点数绘图（这本身就是"难"的直观体现）。
+  求解器使用最朴素的分支策略（取最小未赋值变量、先试真），没有任何子句学习等现代技术——因此曲线反映的是这一具体算法的行为，换一个求解器（如 CDCL）曲线会完全不同。
+</div>
+
+<footer>本演示复现的是已知结果，不构成对开放问题的任何新贡献。</footer>
+
+<script>
+"use strict";
+/* =====================================================================
+ * sat-scaling.html
+ * 纯 vanilla JS 实现随机 3-SAT 生成 + DPLL 求解 + 决策树动画 + 两张统计曲线。
+ * 科学性约定：
+ *   1. 代价度量用「分支节点数」而非挂钟时间（确定性、可复现、标准代理指标）。
+ *   2. 单实例设节点上限，超时按中断节点数记录并明示。
+ *   3. 相变点 α≈4.26 是文献已知结论（随机 3-SAT 可满足性相变），本演示只是复现其经验表现。
+ * ===================================================================== */
+
+/* ---------------- 高分屏 Canvas 适配 ---------------- */
+function setupCanvas(canvas) {
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width  = Math.round(rect.width  * dpr);
+  canvas.height = Math.round(rect.height * dpr);
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { ctx, w: rect.width, h: rect.height };
+}
+
+/* ---------------- 随机 3-SAT 生成 ----------------
+ * 文字约定：变量编号 1..n；文字为带符号整数，正=肯定，负=否定。 */
+function gen3SAT(n, alpha) {
+  const m = Math.round(alpha * n);
+  const clauses = [];
+  for (let c = 0; c < m; c++) {
+    // 不放回抽 3 个不同变量，每个随机取正/负
+    const vs = [];
+    while (vs.length < 3) {
+      const v = 1 + Math.floor(Math.random() * n);
+      if (!vs.includes(v)) vs.push(v);
+    }
+    clauses.push(vs.map(v => Math.random() < 0.5 ? v : -v));
+  }
+  return { n, m, clauses };
+}
+
+/* ---------------- DPLL 求解器（带单元传播 + 轨迹记录） ----------------
+ * 返回 { nodes, result, model, trace }
+ *   result: 'SAT' | 'UNSAT' | 'LIMIT'
+ *   trace : 事件序列，供动画回放
+ *     {t:'d', v, val, d}    分支决策：变量 v 赋 val，树深 d
+ *     {t:'p', v, val}       单元传播赋值
+ *     {t:'c', d}            该层发生冲突
+ *     {t:'b', d}            回溯（撤销到层 d 的兄弟分支）
+ *     {t:'sat'}             满足
+ *     {t:'unsat'}           全树证毕 UNSAT
+ */
+function dpll(clauses, n, nodeLimit) {
+  const assign = new Int8Array(n + 1).fill(-1); // -1 未赋值
+  let nodes = 0, aborted = false, model = null;
+  const trace = [];
+
+  // 单元传播：反复扫描子句，把单文字子句强制赋值。
+  // 返回 false 表示出现空子句（冲突）。added 记录本次传播新赋的变量，便于撤销。
+  function propagate(added) {
+    let progressed = true;
+    while (progressed) {
+      progressed = false;
+      for (let ci = 0; ci < clauses.length; ci++) {
+        const cl = clauses[ci];
+        let sat = false, free = 0, freeLit = 0;
+        for (let k = 0; k < 3; k++) {
+          const lit = cl[k], v = lit > 0 ? lit : -lit, av = assign[v];
+          if (av === -1) { free++; freeLit = lit; }
+          else if ((lit > 0 && av === 1) || (lit < 0 && av === 0)) { sat = true; break; }
+        }
+        if (sat) continue;
+        if (free === 0) return false;            // 空子句 → 冲突
+        if (free === 1) {                         // 单元子句 → 强制传播
+          const v = freeLit > 0 ? freeLit : -freeLit;
+          if (assign[v] === -1) {
+            assign[v] = freeLit > 0 ? 1 : 0;
+            added.push(v);
+            trace.push({ t: 'p', v, val: assign[v] });
+            progressed = true;
+          }
+        }
+      }
+    }
+    return true;
+  }
+
+  function dfs(depth) {
+    nodes++;
+    if (nodes > nodeLimit) { aborted = true; return true; } // true = 终止搜索
+    const saved = assign.slice();          // 进入本层前的状态（用于整体撤销）
+    const added = [];
+    if (!propagate(added)) {
+      trace.push({ t: 'c', d: depth });
+      assign.set(saved);
+      return false;
+    }
+    const postProp = assign.slice();       // 传播后的状态（两个分支共享）
+    // 取最小的未赋值变量作为分支变量（朴素策略）
+    let v = 0;
+    for (let i = 1; i <= n; i++) if (assign[i] === -1) { v = i; break; }
+    if (v === 0) { model = assign.slice(); trace.push({ t: 'sat' }); return true; }
+    for (const val of [1, 0]) {            // 先试真
+      trace.push({ t: 'd', v, val, d: depth });
+      assign.set(postProp);
+      assign[v] = val;
+      if (dfs(depth + 1)) return true;
+      if (aborted) return true;
+      trace.push({ t: 'b', d: depth });    // 该分支失败，回溯
+    }
+    assign.set(saved);                     // 整层撤销
+    return false;
+  }
+
+  dfs(0);
+  if (!model) trace.push({ t: 'unsat' });
+  return { nodes, result: model ? 'SAT' : (aborted ? 'LIMIT' : 'UNSAT'), model, trace };
+}
+
+/* ---------------- 决策树构建（由 trace 重建） ---------------- */
+function buildTree(trace) {
+  const root = { children: [], depth: -1, ev: null, failed: false, isRoot: true };
+  const stack = [root];
+  for (const ev of trace) {
+    if (ev.t === 'd') {
+      const node = { children: [], depth: ev.d, ev, failed: false, parent: stack[stack.length - 1] };
+      stack[stack.length - 1].children.push(node);
+      stack.push(node);
+    } else if (ev.t === 'b') {
+      // 当前决策分支失败 → 标记最后压栈的决策节点
+      const node = stack[stack.length - 1];
+      if (node && !node.isRoot && stack.length > 1 && node.depth === ev.d) node.failed = true;
+      if (stack.length > 1) stack.pop();
+    } else if (ev.t === 'sat') {
+      while (stack.length > 1) { stack[stack.length - 1].failed = false; stack.pop(); }
+    }
+  }
+  return root;
+}
+
+/* ---------------- 决策树布局与绘制 ----------------
+ * 布局：叶节点按 DFS 顺序排 x，内部节点取孩子 x 的均值；y = 树深。 */
+const TREE_MAX_SHOW = 1500; // 节点太多时只画前若干个
+let showNodes = null;       // {list, total, satPath:Set, cur:-1, flashId:-1}
+
+function layoutTree(root) {
+  const list = []; let leafX = 0, maxDepth = 0;
+  (function place(node) {
+    if (list.length >= TREE_MAX_SHOW) { node.x = leafX++; return; } // 截断的子树排到末尾
+    maxDepth = Math.max(maxDepth, node.depth);
+    if (node.children.length === 0) node.x = leafX++;
+    else {
+      for (const ch of node.children) place(ch);
+      if (node.children.length) node.x = node.children.reduce((s, c) => s + c.x, 0) / node.children.length;
+    }
+    node.id = list.length; list.push(node);
+  })(root);
+  return { list, maxDepth };
+}
+
+function drawTree() {
+  const canvas = document.getElementById('treeCanvas');
+  const { ctx, w, h } = setupCanvas(canvas);
+  ctx.clearRect(0, 0, w, h);
+  if (!showNodes || showNodes.list.length === 0) {
+    ctx.fillStyle = '#95a5a6'; ctx.font = '13px sans-serif';
+    ctx.fillText('（尚无搜索树——请先求解一个实例）', 16, 28);
+    return;
+  }
+  const { list, maxDepth } = showNodes;
+  if (maxDepth < 0) return;
+  const pad = 18;
+  const maxX = Math.max(1, list.reduce((m, nd) => Math.max(m, nd.x), 0));
+  const sx = (w - 2 * pad) / Math.max(maxX, 24);   // x 至少按 24 个叶宽缩放，避免过密拉伸
+  const sy = (h - 2 * pad) / Math.max(maxDepth + 1, 1);
+  const px = nd => pad + nd.x * sx;
+  const py = nd => pad + (nd.depth + 1) * sy;
+
+  // 边
+  ctx.lineWidth = 1;
+  for (const nd of list) {
+    for (const ch of nd.children) {
+      ctx.strokeStyle = ch.failed ? 'rgba(192,57,43,0.55)' : 'rgba(93,109,126,0.45)';
+      ctx.beginPath(); ctx.moveTo(px(nd), py(nd)); ctx.lineTo(px(ch), py(ch)); ctx.stroke();
+    }
+  }
+  // 节点
+  for (const nd of list) {
+    const x = px(nd), y = py(nd);
+    let color = '#7d3c98', r = 3.5;
+    if (nd.isRoot) { color = '#7f8c8d'; }
+    else if (nd.ev.t === 'd') { color = nd.ev.val === 1 ? '#1a5276' : '#ca6f1e'; }
+    if (nd.failed) { color = '#c0392b'; r = 4.5; }
+    if (nd.id === showNodes.flashId) { r = 6.5; color = '#c0392b'; }
+    if (nd.id === showNodes.cur) { r = 6.5; color = '#117a65'; }
+    ctx.beginPath(); ctx.arc(x, y, r, 0, 2 * Math.PI);
+    ctx.fillStyle = color; ctx.fill();
+    if (nd.failed) { ctx.strokeStyle = '#c0392b'; ctx.lineWidth = 1.5; ctx.stroke(); }
+  }
+}
+
+/* ---------------- 动画回放 ----------------
+ * 不是逐事件回放 trace（传播事件可能数万条），而是按“已揭示节点数”推进：
+ * 每帧推进 speed 个节点，回溯事件触发红色闪烁。 */
+let replayTimer = null;
+function startReplay(trace) {
+  stopReplay();
+  const root = buildTree(trace);
+  const lay = layoutTree(root);
+  showNodes = { ...lay, total: trace.length, cur: 0, flashId: -1 };
+  const speed = () => +document.getElementById('speedSlider').value;
+  let cursor = 0;
+  replayTimer = setInterval(() => {
+    const step = speed();
+    for (let i = 0; i < step && cursor < trace.length; i++, cursor++) {
+      const ev = trace[cursor];
+      if (ev.t === 'b' && showNodes.list[showNodes.cur]) showNodes.flashId = showNodes.cur;
+      showNodes.cur = Math.min(showNodes.cur + 1, showNodes.list.length - 1);
+    }
+    if (cursor >= trace.length) { stopReplay(); }
+    drawTree();
+  }, 40);
+}
+function stopReplay() { if (replayTimer) { clearInterval(replayTimer); replayTimer = null; } }
+
+/* ---------------- 单实例求解 ---------------- */
+const NODE_LIMIT = 500000;
+let lastTrace = null;
+
+function solveOne() {
+  stopReplay();
+  const n = +document.getElementById('nSlider').value;
+  const alpha = (+document.getElementById('aSlider').value) / 10;
+  document.getElementById('nVal').textContent = n;
+  document.getElementById('aVal').textContent = alpha.toFixed(1);
+  const inst = gen3SAT(n, alpha);
+  document.getElementById('mShow').textContent = inst.m;
+
+  const t0 = performance.now();
+  const res = dpll(inst.clauses, n, NODE_LIMIT);
+  const ms = performance.now() - t0;
+  lastTrace = res.trace;
+
+  const st = document.getElementById('statusLine');
+  if (res.result === 'LIMIT') {
+    st.textContent = `超时：在 ${NODE_LIMIT} 节点上限内未解出（n=${n}, α=${alpha}）。分支节点数达到上限——这正是相变区“难”的直观体现。`;
+  } else {
+    st.textContent = `结果 ${res.result}：分支节点 ${res.nodes.toLocaleString()}，传播+决策事件 ${res.trace.length.toLocaleString()} 条，纯计算耗时 ${ms.toFixed(1)} ms。`;
+  }
+  document.getElementById('replayBtn').disabled = false;
+  startReplay(res.trace);
+}
+
+/* ---------------- 通用对数折线图 ---------------- */
+// pts: [{x, y}]，y>0 且按对数刻度；可选 refX: 参考竖线（如 α=4.26）
+function drawLogChart(canvasId, pts, xLabel, refX, refLabel) {
+  const { ctx, w, h } = setupCanvas(document.getElementById(canvasId));
+  ctx.clearRect(0, 0, w, h);
+  const padL = 44, padB = 26, padT = 10, padR = 10;
+  const cw = w - padL - padR, ch = h - padT - padB;
+  ctx.font = '11px sans-serif';
+  if (pts.length === 0) {
+    ctx.fillStyle = '#95a5a6';
+    ctx.fillText('（尚无数据）', padL, padT + 16);
+    return;
+  }
+  const xs = pts.map(p => p.x), ys = pts.map(p => Math.log10(p.y));
+  const x0 = Math.min(...xs), x1 = Math.max(...xs);
+  let y0 = Math.min(...ys), y1 = Math.max(...ys);
+  if (y1 - y0 < 0.5) { const m = (y0 + y1) / 2; y0 = m - 0.3; y1 = m + 0.3; }
+  y0 -= 0.08; y1 += 0.08;
+  const X = v => padL + (v - x0) / (x1 - x0 || 1) * cw;
+  const Y = v => padT + (1 - (v - y0) / (y1 - y0)) * ch;
+
+  // 纵轴：10 的幂刻度
+  ctx.strokeStyle = '#e3e8ee'; ctx.fillStyle = '#7f8c8d';
+  for (let e = Math.ceil(y0); e <= Math.floor(y1); e++) {
+    const y = Y(e);
+    ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL + cw, y); ctx.stroke();
+    ctx.fillText('1e' + e, 4, y + 4);
+  }
+  // 横轴
+  ctx.beginPath(); ctx.moveTo(padL, padT + ch); ctx.lineTo(padL + cw, padT + ch);
+  ctx.strokeStyle = '#aab7c4'; ctx.stroke();
+  ctx.fillText(xLabel, padL + cw - 70, h - 6);
+  const mid = (x0 + x1) / 2;
+  ctx.fillText(mid.toFixed(2), X(mid) - 10, h - 6);
+  ctx.fillText(x1.toFixed(2), X(x1) - 16, h - 6);
+  ctx.fillText(x0.toFixed(2), X(x0) - 6, h - 6);
+  // 参考竖线（相变点）
+  if (refX !== undefined && refX >= x0 && refX <= x1) {
+    ctx.strokeStyle = '#c0392b'; ctx.setLineDash([4, 4]);
+    ctx.beginPath(); ctx.moveTo(X(refX), padT); ctx.lineTo(X(refX), padT + ch); ctx.stroke();
+    ctx.setLineDash([]);
+    if (refLabel) { ctx.fillStyle = '#c0392b'; ctx.fillText(refLabel, X(refX) - 30, padT + 10); }
+  }
+  // 折线 + 数据点
+  ctx.strokeStyle = '#1a5276'; ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  pts.forEach((p, i) => i ? ctx.lineTo(X(p.x), Y(Math.log10(p.y))) : ctx.moveTo(X(p.x), Y(Math.log10(p.y))));
+  ctx.stroke();
+  ctx.fillStyle = '#1a5276';
+  for (const p of pts) { ctx.beginPath(); ctx.arc(X(p.x), Y(Math.log10(p.y)), 2.6, 0, 2 * Math.PI); ctx.fill(); }
+}
+
+/* ---------------- 批量实验（分块异步，避免卡死界面） ---------------- */
+function median(arr) { const a = [...arr].sort((x, y) => x - y); return a[Math.floor(a.length / 2)]; }
+
+// 通用批处理：jobs 为生成 {x, instance} 的队列，逐个求解（每个 job 之间让出主线程）
+function runBatch(jobs, perX, onPoint, onDone, progressFn) {
+  const results = {};   // x -> [nodes,...]
+  let i = 0;
+  function step() {
+    if (i >= jobs.length) { onDone(results); return; }
+    const { x, inst } = jobs[i++];
+    const res = dpll(inst.clauses, inst.n, 30000); // 批量实验用较小节点上限，保证响应
+    (results[x] = results[x] || []).push(res.nodes);
+    progressFn(i, jobs.length);
+    setTimeout(step, 0);
+  }
+  setTimeout(step, 0);
+}
+
+function runNScan() {
+  const btn = document.getElementById('nScanBtn');
+  btn.disabled = true;
+  const alpha = (+document.getElementById('aSlider').value) / 10;
+  const nMax = 16;
+  const jobs = [];
+  for (let n = 4; n <= nMax; n++)
+    for (let k = 0; k < 5; k++) jobs.push({ x: n, inst: gen3SAT(n, alpha) });
+  document.getElementById('nScanStat').textContent = `α = ${alpha.toFixed(1)}，正在运行……（0/${jobs.length}）`;
+  runBatch(jobs, 5, null,
+    results => {
+      const pts = Object.keys(results).map(Number).sort((a, b) => a - b)
+        .map(n => ({ x: n, y: median(results[n]) }));
+      drawLogChart('chartN', pts, '变量数 n');
+      const growth = pts.length > 2 ? (Math.pow(pts[pts.length - 1].y / pts[0].y, 1 / (pts[pts.length - 1].x - pts[0].x))).toFixed(2) : '?';
+      document.getElementById('nScanStat').textContent =
+        `α = ${alpha.toFixed(1)}。中位分支节点数随 n 的经验增长比约为每 +1 变量 ×${growth}（对数纵轴上近似直线 ⇒ 指数增长）。注意：这是本算法在本分布上的实测，不是下界。`;
+      btn.disabled = false;
+    },
+    (i, tot) => { document.getElementById('nScanStat').textContent = `α = ${alpha.toFixed(1)}，正在运行……（${i}/${tot}）`; });
+}
+
+function runAScan() {
+  const btn = document.getElementById('aScanBtn');
+  btn.disabled = true;
+  const n = Math.min(+document.getElementById('nSlider').value, 12);
+  const jobs = [];
+  for (let a = 2.0; a <= 6.51; a += 0.25)
+    for (let k = 0; k < 5; k++) jobs.push({ x: +a.toFixed(2), inst: gen3SAT(n, a) });
+  document.getElementById('aScanStat').textContent = `固定 n = ${n}，正在运行……（0/${jobs.length}）`;
+  runBatch(jobs, 5, null,
+    results => {
+      const pts = Object.keys(results).map(Number).sort((a, b) => a - b)
+        .map(a => ({ x: a, y: median(results[a]) }));
+      drawLogChart('chartA', pts, '子句/变量比 α', 4.26, 'α=4.26');
+      const peak = pts.reduce((m, p) => p.y > m.y ? p : m, pts[0]);
+      document.getElementById('aScanStat').textContent =
+        `固定 n = ${n}。经验峰值出现在 α ≈ ${peak.x}（理论相变点 α≈4.26；n 越大峰越靠近相变点且越尖锐）。`;
+      btn.disabled = false;
+    },
+    (i, tot) => { document.getElementById('aScanStat').textContent = `固定 n = ${n}，正在运行……（${i}/${tot}）`; });
+}
+
+/* ---------------- 事件绑定与初始化 ---------------- */
+document.getElementById('nSlider').addEventListener('input', e => document.getElementById('nVal').textContent = e.target.value);
+document.getElementById('aSlider').addEventListener('input', e => document.getElementById('aVal').textContent = (+e.target.value / 10).toFixed(1));
+document.getElementById('solveBtn').addEventListener('click', solveOne);
+document.getElementById('replayBtn').addEventListener('click', () => lastTrace && startReplay(lastTrace));
+document.getElementById('nScanBtn').addEventListener('click', runNScan);
+document.getElementById('aScanBtn').addEventListener('click', runAScan);
+window.addEventListener('resize', () => { drawTree(); });
+drawTree();
+drawLogChart('chartN', [], '');
+drawLogChart('chartA', [], '');
+</script>
+</body>
+</html>
